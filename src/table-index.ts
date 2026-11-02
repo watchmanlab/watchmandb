@@ -85,7 +85,6 @@ export class Index {
     if (match.type === "NO_COVER") return;
 
     const searchValues = this._makeIndexKey(query) + "\x00";
-    console.log("search values", searchValues);
 
     let source = fromIterable(
       this._db.getRange({
@@ -123,11 +122,11 @@ export class Index {
     return { source, strategy: "FULL_COVER" };
   }
 
-  insert(row: Table.Row) {
+  insert(row: Table.Row): void {
     const indexKey = this._makeIndexKey(row);
     this._db.put(indexKey, row.id);
   }
-  update(newRow: Table.Row, oldRow: Table.Row) {
+  update(newRow: Table.Row, oldRow: Table.Row): void {
     const oldIndexKey = this._makeIndexKey(oldRow);
     const newIndexKey = this._makeIndexKey(newRow);
 
@@ -137,7 +136,7 @@ export class Index {
     }
   }
 
-  delete(row: Table.Row) {
+  delete(row: Table.Row): void {
     const indexKey = this._makeIndexKey(row);
     this._db.remove(indexKey);
   }
