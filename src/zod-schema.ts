@@ -1,4 +1,3 @@
-import type { Key } from "lmdb";
 import type { SchemaProvider } from "./schema-provider.js";
 import { z } from "zod";
 
@@ -14,7 +13,7 @@ export class ZodSchema<
   parse(data: unknown): Readonly<z.output<z.ZodObject<SHAPE>>> {
     return Object.freeze(this.schema.parse(data));
   }
-  looseObject() {
+  looseObject(): this {
     this.schema = z.looseObject(this.schema.shape);
     return this;
   }

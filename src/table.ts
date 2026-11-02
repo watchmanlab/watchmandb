@@ -13,7 +13,6 @@ export class Table<
   private _name: string;
   private _db: Database<Readonly<ROW>>;
   private _schemaProvider: SchemaProvider<SCHEMA, ROW>;
-  _indexes_cols: IDX_COLS;
   private _indexes?: Index[];
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
@@ -31,12 +30,11 @@ export class Table<
     this._name = name;
     this._db = env.openDB({ name, sharedStructuresKey: Symbol.for(name) });
     this._schemaProvider = schemaProvider;
-    this._indexes_cols = indexesCols;
     this._indexes = indexesCols
       .sort((a, b) => b.length - a.length)
       .map((cols) => new Index(env, this, cols));
   }
-  get name() {
+  get name(): string {
     return this._name;
   }
   get $afterInsert(): Source<Readonly<ROW>> {

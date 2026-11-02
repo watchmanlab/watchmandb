@@ -38,10 +38,6 @@ const db = create({
       price: z.number(),
     }),
   },
-  indexes: {
-    users: [["name", "age"], ["age"], ["locations"]],
-    applies: [["price"], ["userId", "price"]],
-  },
 });
 
 const { users, applies } = db.tables;
@@ -56,11 +52,14 @@ fromRange(1, 101)
   .pipe(terminate())
   .pipe(
     listen(() => {
-      const source = users.find({
-        // age: 10,
-        // name: "10sof",
-        locations: [10, 11],
-      });
+      const source = users.find(
+        {
+          // age: 10,
+          // name: "10sof",
+          locations: [3, 4],
+        },
+        { forceFullScan: true },
+      );
 
       for (const user of source) {
         console.log(user);
