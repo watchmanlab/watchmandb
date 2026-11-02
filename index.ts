@@ -4,6 +4,19 @@ import { ZodSchema } from "./src/zod-schema";
 import { TypBoxSchema } from "./src";
 import Type from "typebox";
 import {} from "bun";
+import {
+  filter,
+  flat$,
+  fromRange,
+  last,
+  listen,
+  map,
+  of,
+  resolve,
+  scanArray,
+  terminate,
+  toConsole,
+} from "@watchmanlab/stream";
 
 try {
   await Bun.file("test.mdb").unlink();
@@ -13,47 +26,36 @@ try {
 const db = create({
   path: "test.mdb",
   tables: {
-    user: new TypBoxSchema({
+    users: new TypBoxSchema({
       id: Type.Number(),
       name: Type.String(),
       age: Type.Number(),
       locations: Type.Optional(Type.Tuple([Type.Number(), Type.Number()])),
     }),
-    apply: new ZodSchema({
+    applies: new ZodSchema({
       id: z.number(),
-      userId: z.string(),
+      userId: z.number(),
       price: z.number(),
     }),
   },
   indexes: {
-    user: [["name", "age"], ["age"]],
-    // apply: [["price"], ["userId", "price"]],
+    users: [["name", "age"], ["age"]],
+    applies: [["price"], ["userId", "price"]],
   },
 });
 
-console.time("insert");
-await db.transaction((db) => {
-  for (let i = 1; i <= 100_000; i++) {
-    db.tables.user.insert({ id: i + 10, name: `${i + 10}-sof`, age: i });
-  }
-});
-console.timeEnd("insert");
+const { users, applies } = db.tables;
 
-for (const _ of db.tables.user.find({ age: 100, name: "110-sof" })) {
-}
+fromRange(1, 101)
+  .pipe(map((i) => users.insert({ id: i, name: i + "sof", age: i })))
+  .pipe(resolve(100))
+  .pipe(terminate())
+  .pipe(
+    listen(() => {
+      const source = users.find({ age: 10 });
 
-console.time("find");
-
-const source = db.tables.user.find({ age: 100 });
-
-console.log("__diagnostics", source.__diagnostics);
-
-source.__diagnostics.index;
-//                    ^?
-source.__diagnostics.strategy;
-//                    ^?
-
-for (const user of source) {
-  console.log(user);
-}
-console.timeEnd("find");
+      for (const user of source) {
+        console.log(user);
+      }
+    }),
+  );

@@ -41,10 +41,6 @@ export class Index {
   get columns(): string[] {
     return this._columns;
   }
-  private _makeIndexKey(row: Table.Row): string {
-    const values = this._columns.map((col) => row[col] + "\x00");
-    return [...values, row.id].join("\x00");
-  }
 
   private _matchQuery(
     query: Record<string, any>,
@@ -75,18 +71,23 @@ export class Index {
     // Case 3: Leftmost prefix broke early and didn't cover either criteria fully
     return { type: "NO_COVER" };
   }
-
+  private _makeIndexKey(row: Table.Row | Record<string, any>): string {
+    const values = this._columns.map((col) => row[col]);
+    if (row?.id) values.push(row.id);
+    return values.join("\x00");
+  }
   find(
     query: Record<string, any>,
     queryLen: number,
   ): { source: Source<any>; strategy: Table.IndexStrategy } | undefined {
+    delete query.id;
+
     const match = this._matchQuery(query, queryLen);
 
     if (match.type === "NO_COVER") return;
 
-    const searchValues = this._columns
-      .map((col) => query[col] + "\x00")
-      .join("\x00");
+    const searchValues = this._makeIndexKey(query) + "\x00";
+    console.log("search values", searchValues);
 
     let source = fromIterable(
       this._db.getRange({
@@ -94,7 +95,9 @@ export class Index {
         end: searchValues + "\xff",
         inclusiveEnd: true,
       }),
-    ).pipe(map((e) => this._table.get(e.value)!));
+    )
+      .pipe(tap(console.log))
+      .pipe(map((e) => this._table.get(e.value)!));
 
     if (match.type === "RESIDUAL_FILTER") {
       const indexedColumns = this._columns;
