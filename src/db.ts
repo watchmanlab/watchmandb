@@ -1,4 +1,4 @@
-import { open, type RootDatabase, type RootDatabaseOptions } from "lmdb";
+import { Key, open, type RootDatabase, type RootDatabaseOptions } from "lmdb";
 
 import { Table } from "./table.js";
 import type { SchemaProvider } from "./schema-provider.js";
@@ -34,11 +34,17 @@ export type Tables<
   >;
 };
 
+export type TableIndexes<SCHEMA_PROVIDER extends SchemaProvider<any, any>> = {
+  [K in keyof SchemaProvider.InferOutput<SCHEMA_PROVIDER>]: SchemaProvider.InferOutput<SCHEMA_PROVIDER>[K] extends Key
+    ? Exclude<K, "id">
+    : never;
+}[keyof SchemaProvider.InferOutput<SCHEMA_PROVIDER>];
+
 export type Indexes<TABLES_SCHEMA extends TablesSchema> = {
-  [K in keyof TABLES_SCHEMA]?: Exclude<
-    keyof SchemaProvider.InferOutput<TABLES_SCHEMA[K]>,
-    "id"
-  >[][];
+  [K in keyof TABLES_SCHEMA]?: [
+    TableIndexes<TABLES_SCHEMA[K]>,
+    ...TableIndexes<TABLES_SCHEMA[K]>[],
+  ][];
 };
 
 export type Config<

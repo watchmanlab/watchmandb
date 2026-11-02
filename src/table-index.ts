@@ -1,4 +1,4 @@
-import type { Database, RootDatabase } from "lmdb";
+import type { Database, Key, RootDatabase } from "lmdb";
 import type { Table } from "./table";
 import {
   filter,
@@ -69,10 +69,10 @@ export class Index {
 
     return { type: "NO_COVER" };
   }
-  private _makeIndexKey(row: Table.Row | Record<string, any>): string {
+  private _makeIndexKey(row: Table.Row | Record<string, any>): Key[] {
     const values = this._columns.map((col) => row[col]);
     if (row?.id) values.push(row.id);
-    return values.join("\x00");
+    return values;
   }
   find(
     query: Record<string, any>,
@@ -84,12 +84,13 @@ export class Index {
 
     if (match.type === "NO_COVER") return;
 
-    const searchValues = this._makeIndexKey(query) + "\x00";
+    const start = this._makeIndexKey(query);
+    const end = [...start, "\xff"];
 
     let source = fromIterable(
       this._db.getRange({
-        start: searchValues,
-        end: searchValues + "\xff",
+        start,
+        end,
         inclusiveEnd: true,
       }),
     ).pipe(map((e) => this._table.get(e.value)!));
@@ -120,7 +121,7 @@ export class Index {
     const oldIndexKey = this._makeIndexKey(oldRow);
     const newIndexKey = this._makeIndexKey(newRow);
 
-    if (oldIndexKey !== newIndexKey) {
+    if (!isDeepEqual(oldIndexKey, newIndexKey)) {
       this._db.remove(oldIndexKey);
       this._db.put(newIndexKey, newRow.id);
     }

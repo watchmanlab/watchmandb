@@ -25,6 +25,7 @@ const db = create({
       name: Type.String(),
       age: Type.Number(),
       locations: Type.Optional(Type.Tuple([Type.Number(), Type.Number()])),
+      contacts: Type.Array(Type.Object({ number: Type.Number() })),
     }),
     applies: new ZodSchema({
       id: z.number(),
@@ -33,7 +34,7 @@ const db = create({
     }),
   },
   indexes: {
-    users: [["name", "locations"]],
+    users: [["age"], ["name"]],
   },
 });
 
@@ -42,24 +43,25 @@ const { users, applies } = db.tables;
 fromRange(1, 101)
   .pipe(
     map((i) =>
-      users.insert({ id: i, name: i + "sof", age: i, locations: [i, i + 1] }),
+      users.insert({
+        id: i,
+        name: i + "sof",
+        age: i,
+        locations: [i, i + 1],
+        contacts: [{ number: i + 1234 }],
+      }),
     ),
   )
   .pipe(resolve(100))
   .pipe(terminate())
   .pipe(
-    listen((s) => {
-      users.find({
-        // age: 10,
-        name: "3sof",
-        locations: [3, 4],
-      });
+    listen(() => {
       console.time("");
-      const source = users.find({
-        // age: 10,
-        name: "3sof",
-        locations: [3, 4],
-      });
+
+      const source = users.find(
+        { contacts: [{ number: 1235 }] },
+        { forceFullScan: true },
+      );
 
       for (const user of source) {
         console.log(user);

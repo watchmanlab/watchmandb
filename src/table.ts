@@ -193,7 +193,7 @@ export class Table<
     this._$beforeDelete?.push(old);
 
     for (let i = 0; i < (this._indexes?.length ?? 0); i++) {
-      this._indexes?.[i]?.insert(old);
+      this._indexes?.[i]?.delete(old);
     }
 
     this._db.remove(old.id).then((r) => {
