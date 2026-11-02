@@ -8,12 +8,15 @@ WatchmanDB breaks away from traditional database constraints, unifying key/value
 
 ## Core Features & Architectural Breakthroughs
 
-### 1. Compile-Time Transaction Guarding
+### 1. Compile-Time Transaction Guarding and Static Query Planner
 
 WatchmanDB splits its surface API.
 
 - **Outside Transactions:** Operations are asynchronous and return standard `Promise<boolean>` wrappers.
+
 - **Inside Transaction Blocks:** The engine strips away the Promise allocation overhead completely. Operations return immediate, raw, synchronous `boolean` results inside the hot execution loop, unleashing maximum throughput.
+
+- **Compile-Time Static Query Planner:** WatchmanDB shifts index auditing straight into the TypeScript compiler layer. Your IDE will tell you exactly which index is hit (`FULL_COVER`, `RESIDUAL_FILTER`) on hover—and triggers a compilation error if a query results in an accidental `FULL_SCAN`.
 
 ### 2.Multi-Paradigm Adaptability
 
