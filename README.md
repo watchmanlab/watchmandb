@@ -51,7 +51,7 @@ WatchmanDB operations are wired directly into a pull-on-push synchronous streami
 ## 📦 Installation
 
 ```bash
-bun add @watchmanlab/db zod
+bun add watchmandb zod
 ```
 
 ---
