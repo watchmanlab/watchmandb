@@ -1,15 +1,8 @@
-import {
-  delay,
-  filter,
-  fromIterable,
-  map,
-  Source,
-  Stream,
-  terminate,
-} from "@watchmanlab/stream";
+import { filter, fromIterable, map, Source, Stream } from "@watchmanlab/stream";
 import type { Database, GetOptions, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
 import { Index } from "./table-index";
+import { isDeepEqual } from "./utils";
 
 export class Table<
   SCHEMA,
@@ -20,7 +13,7 @@ export class Table<
   private _name: string;
   private _db: Database<Readonly<ROW>>;
   private _schemaProvider: SchemaProvider<SCHEMA, ROW>;
-  private _indexes_cols: IDX_COLS;
+  _indexes_cols: IDX_COLS;
   private _indexes?: Index[];
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
@@ -69,36 +62,60 @@ export class Table<
     return this._db.get(id, options);
   }
 
-  find<Q extends Partial<Omit<ROW, "id">>>(
-    query = {} as Q,
-  ): Table.TrackedSource<
+  find<
+    QYERY extends Partial<Omit<ROW, "id">>,
+    OPTIONS extends Table.FindOptions,
+  >(
+    query = {} as QYERY & Table.ValidateQuery<IDX_COLS, QYERY, OPTIONS>,
+    options?: OPTIONS,
+  ): Table.WatchmanSource<
     ROW,
-    Table.DeduceIndexSelection<IDX_COLS, Q>["index"],
-    Table.DeduceIndexSelection<IDX_COLS, Q>["strategy"]
+    OPTIONS["forceFullScan"] extends true
+      ? Table.Diagnostics<never, "FULL_SCAN">
+      : Table.DeduceStrategy<IDX_COLS, QYERY>
   > {
     const queryKeys = Object.keys(query) as string[];
 
-    if (queryKeys.length === 0)
-      return fromIterable(this._db.getRange()).pipe(
+    if (queryKeys.length === 0) {
+      const source = fromIterable(this._db.getRange()).pipe(
         map((e) => e.value),
-      ) as never;
+      );
+      return this._attachDiagnostics(source, undefined, "FULL_SCAN") as never;
+    }
 
-    if (this._indexes) {
+    if (this._indexes && !options?.forceFullScan) {
       for (const index of this._indexes) {
-        const source = index.find(query, queryKeys.length);
-        if (!source) continue;
+        const result = index.find(query, queryKeys.length);
+        if (!result) continue;
 
-        return source as never;
+        return this._attachDiagnostics(
+          result.source,
+          index.columns,
+          result.strategy,
+        ) as never;
       }
     }
 
-    return fromIterable(this._db.getRange({}))
+    const source = fromIterable(this._db.getRange({}))
       .pipe(map((e) => e.value))
       .pipe(
-        filter((row) => queryKeys.every((k) => query[k] === row[k])),
+        filter((row) => queryKeys.every((k) => isDeepEqual(query[k], row[k]))),
       ) as never;
-  }
 
+    return this._attachDiagnostics(source, undefined, "FULL_SCAN") as never;
+  }
+  private _attachDiagnostics(
+    source: Source<ROW>,
+    index: string[] | undefined,
+    strategy: Table.IndexStrategy,
+  ) {
+    return Object.assign(source, {
+      __diagnostics: {
+        index,
+        strategy,
+      },
+    });
+  }
   private _isInsideTransaction(): boolean {
     try {
       return this._db.getWriteTxnId() > 0;
@@ -186,10 +203,10 @@ export class Table<
     });
     return true;
   }
-  async drop(): Promise<void> {
+  async clear(): Promise<void> {
     await Promise.all([
       this._db.clearAsync(),
-      this._indexes?.map((idx) => idx.drop()),
+      this._indexes?.map((idx) => idx.clear()),
     ]);
     return;
   }
@@ -197,53 +214,75 @@ export class Table<
 
 export namespace Table {
   export type Row = Record<string, any> & { id: Key };
-  export type InferRow<T extends Table<any, any, any>> =
-    T extends Table<any, infer R, any> ? R : never;
 
-  export interface QueryDiagnostics<Index, Strategy> {
-    __debug_index_hit: Index;
-    __debug_strategy: Strategy;
+  export type InferRow<TABLE extends Table<any, any, any>> =
+    TABLE extends Table<any, infer R, any> ? R : never;
+
+  // export type InferIndex<T extends string, U extends string = T> = [T] extends [
+  //   never,
+  // ]
+  //   ? ""
+  //   : T extends any
+  //     ?
+  //         | T
+  //         | (InferIndex<Exclude<U, T>> extends ""
+  //             ? never
+  //             : `${T}:${InferIndex<Exclude<U, T>>}`)
+  //     : never;
+
+  export type IndexMatch<
+    INDEX extends string[],
+    QUERY extends Record<string, any>,
+  > = keyof QUERY extends INDEX[number]
+    ? INDEX[0] extends keyof QUERY
+      ? "FULL_COVER"
+      : "NO_COVER"
+    : INDEX[number] extends keyof QUERY
+      ? "RESIDUAL_FILTER"
+      : INDEX[0] extends keyof QUERY
+        ? "RESIDUAL_FILTER"
+        : "NO_COVER";
+
+  export type DeduceStrategy<
+    INDEXES extends string[][],
+    QUERY extends Record<string, any>,
+  > = INDEXES extends [
+    infer FIRST extends string[],
+    ...infer REST extends string[][],
+  ]
+    ? IndexMatch<FIRST, QUERY> extends "NO_COVER"
+      ? DeduceStrategy<REST, QUERY>
+      : Diagnostics<FIRST, IndexMatch<FIRST, QUERY>>
+    : Diagnostics<never, "FULL_SCAN">;
+
+  export type IndexStrategy =
+    | "FULL_COVER"
+    | "NRESIDUAL_FILTER"
+    | "FULL_SCAN"
+    | (string & {});
+  export type Diagnostics<
+    INDEX extends string[] | undefined,
+    STRATEGY extends IndexStrategy,
+  > = { index: INDEX; strategy: STRATEGY };
+  export type WatchmanSource<
+    ROW,
+    DIAGNOSTICS extends Diagnostics<any, any>,
+  > = Source<ROW> & {
+    __diagnostics: DIAGNOSTICS;
+  };
+  export interface FindOptions {
+    forceFullScan?: boolean;
   }
 
-  // We wrap your original Source stream with the diagnostics metadata
-  export type TrackedSource<T, Index, Strategy> = Source<T> &
-    QueryDiagnostics<Index, Strategy>;
-
-  // Helper type to check if a specific Index tuple covers a Query object type
-  export type EvaluateIndexMatch<
-    Index extends readonly string[],
-    Query,
-  > = Index extends readonly []
-    ? "NO_COVER"
-    : {
-          [K in Index[number]]: K extends keyof Query ? true : false;
-        }[Index[number]] extends true
-      ? EqualLen<Index, Query> extends true
-        ? "FULL_COVER"
-        : "RESIDUAL_FILTER"
-      : "NO_COVER";
-
-  // Helper to determine if the query key length matches the index tuple length exactly
-  export type EqualLen<
-    Index extends readonly string[],
-    Query,
-    Keys extends any[] = [],
-  > = Keys["length"] extends Index["length"]
-    ? keyof Query extends Index[number]
-      ? true
-      : false
-    : EqualLen<Index, Query, [...Keys, any]>;
-
-  // The recursive compiler loop that mimics your runtime loop matching order
-  export type DeduceIndexSelection<
-    Indexes extends readonly (readonly string[])[],
-    Query,
-  > = Indexes extends readonly [
-    infer First extends readonly string[],
-    ...infer Rest extends readonly (readonly string[])[],
-  ]
-    ? EvaluateIndexMatch<First, Query> extends "NO_COVER"
-      ? DeduceIndexSelection<Rest, Query> // Try next index in priority order
-      : { index: First; strategy: EvaluateIndexMatch<First, Query> } // Found it!
-    : { index: never; strategy: "FULL_SCAN" }; // No index matched
+  export type ValidateQuery<
+    INDEXES extends string[][],
+    QUERY extends Record<string, any>,
+    OPTIONS extends FindOptions,
+  > = OPTIONS["forceFullScan"] extends true
+    ? QUERY // Escape hatch triggered! Bypass all indexing errors.
+    : DeduceStrategy<INDEXES, QUERY>["strategy"] extends "FULL_SCAN"
+      ? { [K in keyof QUERY]: QUERY[K] } & {
+          readonly __unindexed_query_error: "❌ WatchmanDB Error: This query results in a FULL_SCAN! Please add an appropriate index or pass { forceFullScan: true }.";
+        }
+      : QUERY; // Valid index found
 }

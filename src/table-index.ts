@@ -8,6 +8,7 @@ import {
   Source,
   tap,
 } from "@watchmanlab/stream";
+import { isDeepEqual } from "./utils";
 export type IndexMatchResult =
   | { type: "FULL_COVER" } // 0% row validation needed
   | { type: "RESIDUAL_FILTER"; indexKeysCount: number } // Use index first, then filter rows
@@ -31,17 +32,15 @@ export class Index {
     // build the index if new and its table has rows
     if (
       this._db.getKeys()[Symbol.iterator]().next().done &&
-      !this._table.find({})[Symbol.iterator]().next().done
+      !this._table.find()[Symbol.iterator]().next().done
     ) {
       this._db.transaction(() =>
         this._table.find().pipe(listen((row) => this.insert(row))),
       );
     }
   }
-
-  private _makeIndexKey(row: Table.Row): string {
-    const values = this._columns.map((col) => row[col] + "\x00");
-    return [...values, row.id].join("\x00");
+  get columns(): string[] {
+    return this._columns;
   }
 
   private _matchQuery(
@@ -64,31 +63,29 @@ export class Index {
       return { type: "FULL_COVER" };
     }
 
-    // Case 2: The query is larger, but the index columns are fully satisfied.
-    // This is your Residual Filtering sweet spot!
     if (matchCount === indexLen) {
       return { type: "RESIDUAL_FILTER", indexKeysCount: indexLen };
     }
 
-    // Case 3: Leftmost prefix broke early and didn't cover either criteria fully
     return { type: "NO_COVER" };
   }
+  private _makeIndexKey(row: Table.Row | Record<string, any>): string {
+    const values = this._columns.map((col) => row[col]);
+    if (row?.id) values.push(row.id);
+    return values.join("\x00");
+  }
+  find(
+    query: Record<string, any>,
+    queryLen: number,
+  ): { source: Source<any>; strategy: Table.IndexStrategy } | undefined {
+    delete query.id;
 
-  find(query: Record<string, any>, queryLen: number): Source<any> | undefined {
     const match = this._matchQuery(query, queryLen);
 
-    // If the index doesn't align with the prefix at all, skip it immediately
     if (match.type === "NO_COVER") return;
 
-    // Build the compound key prefix using only the index columns.
-    // This works perfectly for both FULL_COVER and RESIDUAL_FILTER!
-    const searchValues = this._columns
-      .map((col) => query[col] + "\x00")
-      .join("\x00");
-
-    console.log("query", Object.keys(query));
-    console.log("index hit:", this._columns, `(${match.type})`);
-    console.log("---------------------");
+    const searchValues = this._makeIndexKey(query) + "\x00";
+    console.log("search values", searchValues);
 
     let source = fromIterable(
       this._db.getRange({
@@ -96,33 +93,34 @@ export class Index {
         end: searchValues + "\xff",
         inclusiveEnd: true,
       }),
-    )
-      .pipe(tap((v) => console.log("key found:", v.key)))
-      .pipe(map((e) => this._table.get(e.value)!));
+    ).pipe(map((e) => this._table.get(e.value)!));
 
-    // If the query is larger than the index, apply residual filtering to the stream
     if (match.type === "RESIDUAL_FILTER") {
-      // Isolate the extra keys that aren't managed by this index
       const indexedColumns = this._columns;
       const residualKeys = Object.keys(query).filter(
         (k) => !indexedColumns.includes(k),
       );
+
       const residualLen = residualKeys.length;
 
-      return source.pipe(
-        filter((row) => {
-          for (let i = 0; i < residualLen; i++) {
-            const key = residualKeys[i]!;
-            if (row[key] !== query[key]) {
-              return false;
+      return {
+        source: source.pipe(
+          filter((row) => {
+            for (let i = 0; i < residualLen; i++) {
+              const key = residualKeys[i]!;
+
+              if (!isDeepEqual(row[key], query[key])) {
+                return false;
+              }
             }
-          }
-          return true;
-        }),
-      );
+            return true;
+          }),
+        ),
+        strategy: "NRESIDUAL_FILTER",
+      };
     }
 
-    return source;
+    return { source, strategy: "FULL_COVER" };
   }
 
   insert(row: Table.Row) {
@@ -143,7 +141,7 @@ export class Index {
     const indexKey = this._makeIndexKey(row);
     this._db.remove(indexKey);
   }
-  drop(): Promise<void> {
+  clear(): Promise<void> {
     return this._db.clearAsync();
   }
 }
