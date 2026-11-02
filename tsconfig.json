@@ -5,7 +5,7 @@
     "moduleResolution": "bundler",
     "lib": ["ESNext"],
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "types": ["bun"],
     "declaration": true,
     "declarationMap": true,
@@ -20,6 +20,6 @@
     "noImplicitOverride": true,
     "noEmit": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "build.ts", "**/*.test.ts"]
+  "include": ["src/**/*", "index.ts"],
+  "exclude": ["node_modules", "example.ts", "dist", "build.ts", "**/*.test.ts"]
 }

@@ -5,12 +5,11 @@ await $`rm -rf dist`;
 
 // Build JavaScript
 const result = await build({
-  entrypoints: ["src/index.ts"],
+  entrypoints: ["./index.ts"],
   outdir: "./dist",
   target: "node",
-  format: "esm",
-  sourcemap: true,
-  // minify: true,
+  check: true,
+  external: ["lmdb", "@watchmanlab/stream"],
 });
 
 if (!result.success) {
