@@ -95,25 +95,15 @@ export class Index {
     ).pipe(map((e) => this._table.get(e.value)!));
 
     if (match.type === "RESIDUAL_FILTER") {
-      const indexedColumns = this._columns;
       const residualKeys = Object.keys(query).filter(
-        (k) => !indexedColumns.includes(k),
+        (k) => !this._columns.includes(k),
       );
-
-      const residualLen = residualKeys.length;
 
       return {
         source: source.pipe(
-          filter((row) => {
-            for (let i = 0; i < residualLen; i++) {
-              const key = residualKeys[i]!;
-
-              if (!isDeepEqual(row[key], query[key])) {
-                return false;
-              }
-            }
-            return true;
-          }),
+          filter((row) =>
+            residualKeys.every((key) => isDeepEqual(row[key], query[key])),
+          ),
         ),
         strategy: "NRESIDUAL_FILTER",
       };
