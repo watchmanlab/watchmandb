@@ -8,6 +8,7 @@ import {
   Source,
   tap,
 } from "@watchmanlab/stream";
+import { isDeepEqual } from "./utils";
 export type IndexMatchResult =
   | { type: "FULL_COVER" } // 0% row validation needed
   | { type: "RESIDUAL_FILTER"; indexKeysCount: number } // Use index first, then filter rows
@@ -62,13 +63,10 @@ export class Index {
       return { type: "FULL_COVER" };
     }
 
-    // Case 2: The query is larger, but the index columns are fully satisfied.
-    // This is your Residual Filtering sweet spot!
     if (matchCount === indexLen) {
       return { type: "RESIDUAL_FILTER", indexKeysCount: indexLen };
     }
 
-    // Case 3: Leftmost prefix broke early and didn't cover either criteria fully
     return { type: "NO_COVER" };
   }
   private _makeIndexKey(row: Table.Row | Record<string, any>): string {
@@ -95,15 +93,14 @@ export class Index {
         end: searchValues + "\xff",
         inclusiveEnd: true,
       }),
-    )
-      .pipe(tap(console.log))
-      .pipe(map((e) => this._table.get(e.value)!));
+    ).pipe(map((e) => this._table.get(e.value)!));
 
     if (match.type === "RESIDUAL_FILTER") {
       const indexedColumns = this._columns;
       const residualKeys = Object.keys(query).filter(
         (k) => !indexedColumns.includes(k),
       );
+
       const residualLen = residualKeys.length;
 
       return {
@@ -111,7 +108,8 @@ export class Index {
           filter((row) => {
             for (let i = 0; i < residualLen; i++) {
               const key = residualKeys[i]!;
-              if (row[key] !== query[key]) {
+
+              if (!isDeepEqual(row[key], query[key])) {
                 return false;
               }
             }

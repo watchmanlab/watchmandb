@@ -2,6 +2,7 @@ import { filter, fromIterable, map, Source, Stream } from "@watchmanlab/stream";
 import type { Database, GetOptions, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
 import { Index } from "./table-index";
+import { isDeepEqual } from "./utils";
 
 export class Table<
   SCHEMA,
@@ -98,7 +99,7 @@ export class Table<
     const source = fromIterable(this._db.getRange({}))
       .pipe(map((e) => e.value))
       .pipe(
-        filter((row) => queryKeys.every((k) => query[k] === row[k])),
+        filter((row) => queryKeys.every((k) => isDeepEqual(query[k], row[k]))),
       ) as never;
 
     return this._attachDiagnostics(source, undefined, "FULL_SCAN") as never;

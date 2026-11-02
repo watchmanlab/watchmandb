@@ -39,7 +39,7 @@ const db = create({
     }),
   },
   indexes: {
-    users: [["name", "age"], ["age"]],
+    users: [["name", "age"], ["age"], ["locations"]],
     applies: [["price"], ["userId", "price"]],
   },
 });
@@ -47,12 +47,20 @@ const db = create({
 const { users, applies } = db.tables;
 
 fromRange(1, 101)
-  .pipe(map((i) => users.insert({ id: i, name: i + "sof", age: i })))
+  .pipe(
+    map((i) =>
+      users.insert({ id: i, name: i + "sof", age: i, locations: [i, i + 1] }),
+    ),
+  )
   .pipe(resolve(100))
   .pipe(terminate())
   .pipe(
     listen(() => {
-      const source = users.find({ age: 10 });
+      const source = users.find({
+        // age: 10,
+        // name: "10sof",
+        locations: [10, 11],
+      });
 
       for (const user of source) {
         console.log(user);
