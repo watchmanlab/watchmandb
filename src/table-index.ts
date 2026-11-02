@@ -85,7 +85,6 @@ export class Index {
     if (match.type === "NO_COVER") return;
 
     const searchValues = this._makeIndexKey(query) + "\x00";
-    console.log("search values", searchValues);
 
     let source = fromIterable(
       this._db.getRange({
