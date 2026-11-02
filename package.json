@@ -1,6 +1,6 @@
 {
   "name": "watchmandb",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A hyper-fast, reactive embedded database for Bun & Node.js built on LMDB. Features a compile-time static query planner in TypeScript and demand-driven streaming joins. (700K writes/sec, 5M reads/sec)",
   "author": "Soffinal <smari.sofiane@gmail.com>",
   "repository": {
