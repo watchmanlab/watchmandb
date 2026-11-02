@@ -3,20 +3,14 @@ import { create } from "./src/db";
 import { ZodSchema } from "./src/zod-schema";
 import { TypBoxSchema } from ".";
 import Type from "typebox";
-import {} from "bun";
 import {
-  filter,
-  flat$,
   fromRange,
-  last,
   listen,
   map,
-  of,
   resolve,
-  scanArray,
   terminate,
-  toConsole,
 } from "@watchmanlab/stream";
+import {} from "bun";
 
 try {
   await Bun.file("test.mdb").unlink();
@@ -38,6 +32,9 @@ const db = create({
       price: z.number(),
     }),
   },
+  indexes: {
+    users: [["name", "locations"]],
+  },
 });
 
 const { users, applies } = db.tables;
@@ -51,18 +48,22 @@ fromRange(1, 101)
   .pipe(resolve(100))
   .pipe(terminate())
   .pipe(
-    listen(() => {
-      const source = users.find(
-        {
-          // age: 10,
-          // name: "10sof",
-          locations: [3, 4],
-        },
-        { forceFullScan: true },
-      );
+    listen((s) => {
+      users.find({
+        // age: 10,
+        name: "3sof",
+        locations: [3, 4],
+      });
+      console.time("");
+      const source = users.find({
+        // age: 10,
+        name: "3sof",
+        locations: [3, 4],
+      });
 
       for (const user of source) {
         console.log(user);
       }
+      console.timeEnd("");
     }),
   );
