@@ -1,7 +1,7 @@
 import { filter, fromIterable, map, Source, Stream } from "@watchmanlab/stream";
 import type { Database, GetOptions, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
-import { Index } from "./table-index";
+import { Index } from ".";
 import { isDeepEqual } from "./utils";
 
 export class Table<
