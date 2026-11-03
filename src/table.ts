@@ -74,6 +74,7 @@ export class Table<
   > {
     const queryKeys = Object.keys(query) as string[];
 
+    // FULL SCAN + NO FILTER
     if (queryKeys.length === 0) {
       const source = fromIterable(this._db.getRange()).pipe(
         map((e) => e.value),
@@ -81,6 +82,7 @@ export class Table<
       return this._attachDiagnostics(source, undefined, "FULL_SCAN") as never;
     }
 
+    // TRY INDEXES
     if (this._indexes && !options?.forceFullScan) {
       for (const index of this._indexes) {
         const result = index.find(query, queryKeys.length);
@@ -93,7 +95,7 @@ export class Table<
         ) as never;
       }
     }
-
+    // FULL SCAN + FILTER
     const source = fromIterable(this._db.getRange({}))
       .pipe(map((e) => e.value))
       .pipe(
@@ -214,20 +216,12 @@ export class Table<
 export namespace Table {
   export type Row = Record<string, any> & { id: Key };
 
+  // export type
+  export type Query<T extends Record<string, any>> = {
+    [K in keyof T]: T[K] extends Key ? T[K] | `` : T[K];
+  };
   export type InferRow<TABLE extends Table<any, any, any>> =
     TABLE extends Table<any, infer R, any> ? R : never;
-
-  // export type InferIndex<T extends string, U extends string = T> = [T] extends [
-  //   never,
-  // ]
-  //   ? ""
-  //   : T extends any
-  //     ?
-  //         | T
-  //         | (InferIndex<Exclude<U, T>> extends ""
-  //             ? never
-  //             : `${T}:${InferIndex<Exclude<U, T>>}`)
-  //     : never;
 
   export type IndexMatch<
     INDEX extends string[],

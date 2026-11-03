@@ -2,7 +2,6 @@ import { Key, open, type RootDatabase, type RootDatabaseOptions } from "lmdb";
 
 import { Table } from "./table.js";
 import type { SchemaProvider } from "./schema-provider.js";
-import { Index } from "./table-index.js";
 
 export type Db<
   TABLES_SCHEMA extends TablesSchema,
