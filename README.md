@@ -69,13 +69,14 @@ import { create, ZodSchema } from "./db";
 
 const db = create({
   path: "watchman.mdb",
-  dbSchema: {
+  tables: {
     user: new ZodSchema({
       id: z.string(),
       name: z.string(),
       age: z.number(),
     }),
     // Permissive, polymorphic table allowing schema flexibility
+    // You can use another validator if you which
     request: new ZodSchema({
       id: z.string(),
       type: z.string(),
