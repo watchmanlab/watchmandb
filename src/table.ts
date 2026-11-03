@@ -102,6 +102,7 @@ export class Table<
 
     return this._attachDiagnostics(source, undefined, "FULL_SCAN") as never;
   }
+
   private _attachDiagnostics(
     source: Source<ROW>,
     index: string[] | undefined,
@@ -277,7 +278,7 @@ export namespace Table {
     QUERY extends Record<string, any>,
     OPTIONS extends FindOptions,
   > = OPTIONS["forceFullScan"] extends true
-    ? QUERY // Escape hatch triggered! Bypass all indexing errors.
+    ? QUERY
     : DeduceStrategy<INDEXES, QUERY>["strategy"] extends "FULL_SCAN"
       ? { [K in keyof QUERY]: QUERY[K] } & {
           readonly __unindexed_query_error: "❌ WatchmanDB Error: This query results in a FULL_SCAN! Please add an appropriate index or pass { forceFullScan: true }.";

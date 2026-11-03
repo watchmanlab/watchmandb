@@ -24,8 +24,8 @@ const db = create({
       id: Type.Number(),
       name: Type.String(),
       age: Type.Number(),
-      locations: Type.Optional(Type.Tuple([Type.Number(), Type.Number()])),
-      contacts: Type.Array(Type.Object({ number: Type.Number() })),
+      // locations: Type.Optional(Type.Tuple([Type.Number(), Type.Number()])),
+      // contacts: Type.Array(Type.Object({ number: Type.Number() })),
     }),
     applies: new ZodSchema({
       id: z.number(),
@@ -40,15 +40,15 @@ const db = create({
 
 const { users, applies } = db.tables;
 
-fromRange(1, 101)
+fromRange(1, 10)
   .pipe(
     map((i) =>
       users.insert({
         id: i,
         name: i + "sof",
-        age: i,
-        locations: [i, i + 1],
-        contacts: [{ number: i + 1234 }],
+        age: 20,
+        // locations: [i, i + 1],
+        // contacts: [{ number: i + 1234 }],
       }),
     ),
   )
@@ -58,10 +58,7 @@ fromRange(1, 101)
     listen(() => {
       console.time("");
 
-      const source = users.find(
-        { contacts: [{ number: 1235 }] },
-        { forceFullScan: true },
-      );
+      const source = users.find({ age: 20 });
 
       for (const user of source) {
         console.log(user);
