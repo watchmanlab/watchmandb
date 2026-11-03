@@ -13,9 +13,8 @@ export const gt = <
 >(
   target: T,
 ) => {
-  return new Operator(
-    { start: [target, "\xff"], end: undefined, reverse: false },
-    (rowValue) => (target ? rowValue > target : true),
+  return new Operator({ start: [target], end: ["\x00"] }, (rowValue) =>
+    target ? rowValue > target : true,
   );
 };
 
