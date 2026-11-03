@@ -16,7 +16,7 @@ WatchmanDB splits its surface API.
 
 - **Inside Transaction Blocks:** The engine strips away the Promise allocation overhead completely. Operations return immediate, raw, synchronous `boolean` results inside the hot execution loop, unleashing maximum throughput.
 
-- **Compile-Time Static Query Planner:** WatchmanDB shifts index auditing straight into the TypeScript compiler layer. Your IDE will tell you exactly which index is hit (`FULL_COVER`, `RESIDUAL_FILTER`) on hover—and triggers a compilation error if a query results in an accidental `FULL_SCAN`.
+- **Compile-Time Optimization :** WatchmanDB shifts index auditing straight into the TypeScript compiler layer. Your IDE will tell you exactly which index is hit (`FULL_COVER`, `RESIDUAL_FILTER`) on hover—and triggers a compilation error if a query results in an accidental `FULL_SCAN` and even prevent to index a none suported column.
 
 ### 2.Multi-Paradigm Adaptability
 
