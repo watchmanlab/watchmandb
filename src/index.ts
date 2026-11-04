@@ -29,7 +29,7 @@ export class Index {
     this._table = table;
     this._columns = columns;
 
-    // build the index if new and its table has rows
+    // SYNC NEW INDEX
     if (
       this._db.getKeys()[Symbol.iterator]().next().done &&
       !this._table.find()[Symbol.iterator]().next().done
