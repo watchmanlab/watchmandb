@@ -1,7 +1,7 @@
 import { filter, fromIterable, map, Source, Stream } from "@watchmanlab/stream";
 import type { Database, GetOptions, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
-import { Index } from "./table-index";
+import { Index } from ".";
 import { isDeepEqual } from "./utils";
 
 export class Table<
@@ -16,8 +16,14 @@ export class Table<
   private _indexes?: Index[];
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
-  private _$beforeUpdate?: Stream<{ New: Readonly<ROW>; Old: Readonly<ROW> }>;
-  private _$afterUpdate?: Stream<{ New: Readonly<ROW>; Old: Readonly<ROW> }>;
+  private _$beforeUpdate?: Stream<{
+    newRow: Readonly<ROW>;
+    oldRow: Readonly<ROW>;
+  }>;
+  private _$afterUpdate?: Stream<{
+    newRow: Readonly<ROW>;
+    oldRow: Readonly<ROW>;
+  }>;
   private _$beforeDelete?: Stream<Readonly<ROW>>;
   private _$afterDelete?: Stream<Readonly<ROW>>;
 
@@ -43,10 +49,13 @@ export class Table<
   get $beforeInsert(): Source<Readonly<ROW>> {
     return Source.from((this._$beforeInsert ??= new Stream()));
   }
-  get $beforeUpdate(): Source<{ New: Readonly<ROW>; Old: Readonly<ROW> }> {
+  get $beforeUpdate(): Source<{
+    newRow: Readonly<ROW>;
+    oldRow: Readonly<ROW>;
+  }> {
     return Source.from((this._$beforeUpdate ??= new Stream()));
   }
-  get $afterUpdate(): Source<{ New: Readonly<ROW>; Old: Readonly<ROW> }> {
+  get $afterUpdate(): Source<{ newRow: Readonly<ROW>; oldRow: Readonly<ROW> }> {
     return Source.from((this._$afterUpdate ??= new Stream()));
   }
   get $beforeDelete(): Source<Readonly<ROW>> {
@@ -66,7 +75,7 @@ export class Table<
   >(
     query = {} as QYERY & Table.ValidateQuery<IDX_COLS, QYERY, OPTIONS>,
     options?: OPTIONS,
-  ): Table.WatchmanSource<
+  ): Table.FindResult<
     ROW,
     OPTIONS["forceFullScan"] extends true
       ? Table.Diagnostics<never, "FULL_SCAN">
@@ -172,35 +181,35 @@ export class Table<
     return true;
   }
   private _update(row: Partial<Omit<ROW, "id">> & Pick<ROW, "id">) {
-    const Old = this._db.get(row.id);
-    if (!Old) return false;
+    const oldRow = this._db.get(row.id);
+    if (!oldRow) return false;
 
-    const parsed = this._schemaProvider.parse({ ...Old, ...row });
+    const parsed = this._schemaProvider.parse({ ...oldRow, ...row });
 
-    this._$beforeUpdate?.push({ New: parsed, Old });
+    this._$beforeUpdate?.push({ newRow: parsed, oldRow });
 
     for (let i = 0; i < (this._indexes?.length ?? 0); i++) {
-      this._indexes?.[i]?.update(parsed, Old);
+      this._indexes?.[i]?.update(parsed, oldRow);
     }
 
     this._db.put(parsed.id, parsed).then((r) => {
-      if (r) this._$afterUpdate?.push({ New: parsed, Old });
+      if (r) this._$afterUpdate?.push({ newRow: parsed, oldRow });
     });
 
     return true;
   }
   private _delete(id: ROW["id"]) {
-    const old = this._db.get(id);
-    if (!old) return false;
+    const oldRow = this._db.get(id);
+    if (!oldRow) return false;
 
-    this._$beforeDelete?.push(old);
+    this._$beforeDelete?.push(oldRow);
 
     for (let i = 0; i < (this._indexes?.length ?? 0); i++) {
-      this._indexes?.[i]?.delete(old);
+      this._indexes?.[i]?.delete(oldRow);
     }
 
-    this._db.remove(old.id).then((r) => {
-      if (r) this._$afterDelete?.push(old);
+    this._db.remove(oldRow.id).then((r) => {
+      if (r) this._$afterDelete?.push(oldRow);
     });
     return true;
   }
@@ -257,7 +266,7 @@ export namespace Table {
     INDEX extends string[] | undefined,
     STRATEGY extends IndexStrategy,
   > = { index: INDEX; strategy: STRATEGY };
-  export type WatchmanSource<
+  export type FindResult<
     ROW,
     DIAGNOSTICS extends Diagnostics<any, any>,
   > = Source<ROW> & {

@@ -29,7 +29,7 @@ export class Index {
     this._table = table;
     this._columns = columns;
 
-    // build the index if new and its table has rows
+    // SYNC NEW INDEX
     if (
       this._db.getKeys()[Symbol.iterator]().next().done &&
       !this._table.find()[Symbol.iterator]().next().done
@@ -63,17 +63,14 @@ export class Index {
       }
     }
 
+    // NO COVER
     if (residualKeys.length >= queryLen) return;
 
     const start = this._makeIndexKey(query);
     const end = [...start, "\xff"];
 
     let source = fromIterable(
-      this._db.getRange({
-        start,
-        end,
-        inclusiveEnd: true,
-      }),
+      this._db.getRange({ start, end, inclusiveEnd: true }),
     ).pipe(map((e) => this._table.get(e.value)!));
 
     if (residualKeys.length && residualKeys.length < queryLen) {

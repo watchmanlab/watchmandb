@@ -24,8 +24,6 @@ const db = create({
       id: Type.Number(),
       name: Type.String(),
       age: Type.Number(),
-      // locations: Type.Optional(Type.Tuple([Type.Number(), Type.Number()])),
-      // contacts: Type.Array(Type.Object({ number: Type.Number() })),
     }),
     applies: new ZodSchema({
       id: z.number(),
@@ -40,13 +38,13 @@ const db = create({
 
 const { users, applies } = db.tables;
 
-fromRange(1, 10)
+fromRange(1, 100)
   .pipe(
     map((i) =>
       users.insert({
         id: i,
         name: i + "sof",
-        age: 20,
+        age: i,
         // locations: [i, i + 1],
         // contacts: [{ number: i + 1234 }],
       }),
@@ -58,11 +56,30 @@ fromRange(1, 10)
     listen(() => {
       console.time("");
 
-      const source = users.find({ age: 20 });
+      // const source = users.find({ age: 20 });
 
-      for (const user of source) {
-        console.log(user);
-      }
+      // for (const user of source) {
+      //   console.log(user);
+      // }
       console.timeEnd("");
     }),
   );
+
+//just an experiment with range queries
+await db.env.transaction(() => {
+  db.env.put([10, "foo", 1], "ok sof");
+  db.env.put([20, "zar", 2], "ok sof");
+  db.env.put([20, "baz", 3], "ok sof");
+  db.env.put([30, "zip", 4], "ok mol");
+});
+
+const iter = db.env.getRange({
+  start: [20],
+  end: ["\x00"],
+  // start: undefined,
+  // end: [20, "\xff"],
+  // inclusiveEnd: true,
+});
+for (const v of iter) {
+  console.log(v.key);
+}
