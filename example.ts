@@ -24,8 +24,6 @@ const db = create({
       id: Type.Number(),
       name: Type.String(),
       age: Type.Number(),
-      // locations: Type.Optional(Type.Tuple([Type.Number(), Type.Number()])),
-      // contacts: Type.Array(Type.Object({ number: Type.Number() })),
     }),
     applies: new ZodSchema({
       id: z.number(),
