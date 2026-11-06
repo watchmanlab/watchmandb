@@ -4,9 +4,7 @@ import { ZodSchema } from "./zod-schema";
 
 //experimental
 export type QueryDeclaration<SHAPE extends Record<string, any>> = {
-  [K in "eq" | "lt" | "lte" | "gt" | "gte" | "or"]?: K extends "or"
-    ? QueryDeclaration<SHAPE>
-    : keyof SHAPE | Array<keyof SHAPE>;
+  [K in "eq" | "lt" | "lte" | "gt" | "gte" | "or"]?: keyof SHAPE;
 };
 
 export function declareTable<SP extends SchemaProvider<any, any>>(
@@ -29,9 +27,8 @@ const user = declareTable(
   {
     byName: {
       eq: "name",
-      gte: ["count1", "count2"],
-      lte: ["count3", "count2"],
-      or: { gte: "name", lte: "name" },
+      gte: "count1",
+      lte: "count3",
     },
   },
 );

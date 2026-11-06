@@ -19,7 +19,6 @@ export class Table<
   private _name: NAME;
   private _db: Database<Readonly<ROW>>;
   private _schema: SCHEMA;
-  private _indexes: string[][];
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
   private _$beforeUpdate?: Stream<{
@@ -33,19 +32,13 @@ export class Table<
   private _$beforeDelete?: Stream<Readonly<ROW>>;
   private _$afterDelete?: Stream<Readonly<ROW>>;
 
-  constructor(init: {
-    name: NAME;
-    env: RootDatabase;
-    schema: SCHEMA;
-    indexes: string[][];
-  }) {
+  constructor(init: { name: NAME; env: RootDatabase; schema: SCHEMA }) {
     this._name = init.name;
     this._db = init.env.openDB({
       name: this._name,
       sharedStructuresKey: Symbol.for(this._name),
     });
     this._schema = init.schema;
-    this._indexes = init.indexes;
   }
   get name(): string {
     return this._name;
