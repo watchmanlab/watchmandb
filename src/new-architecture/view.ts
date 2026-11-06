@@ -11,9 +11,9 @@ export class View<
   const INCLUDES,
   ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<Table.InferRow<TABLE>>,
 > {
-  private _db: Database<INCLUDES, [...KEY, ROW["id"]]>;
+  protected _db: Database<INCLUDES, [...KEY, ROW["id"]]>;
 
-  constructor(private init: View.Init<TABLE, KEY, INCLUDES, ROW>) {
+  constructor(protected init: View.Init<TABLE, KEY, INCLUDES, ROW>) {
     const { name, env, table, unique, includes } = init;
     this._db = env.openDB({ name: `view:${name}` });
 
