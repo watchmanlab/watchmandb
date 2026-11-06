@@ -117,7 +117,7 @@ export namespace View {
   export type Value<ID extends Key, INCLUDES> = { id: ID; includes: INCLUDES };
   export type Init<
     TABLE extends Table.AnyTable,
-    KEY extends readonly Key[],
+    KEY extends Key[],
     INCLUDES,
     ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<
       Table.InferRow<TABLE>
