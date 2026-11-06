@@ -71,6 +71,7 @@ await db.transaction(() => {
   db.put(["a", "foo", 1], "ok sof");
   db.put(["b", "zar", 2], "ok zof");
   db.put(["c", "baz", 3], "ok bof");
+  db.put(["c", "raz", 3], "ok bof");
   db.put(["d", "zip", 4], "ok mol");
   db.put(["e", "pip", 5], "ok pol");
 });
@@ -78,9 +79,12 @@ await db.transaction(() => {
 await Bun.sleep(0);
 
 const iter = db.getRange({
-  end: ["c"],
+  start: ["b"],
+  end: ["e", "\xff"],
 });
 
 for (const v of iter) {
   console.log(v.key);
 }
+
+console.log([1, 2, 3, 4].toSpliced(-1));
