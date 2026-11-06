@@ -3,18 +3,18 @@ import { Table } from "./table";
 import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
 import { ZodSchema } from "./zod-schema";
-import z, { includes } from "zod";
+import z from "zod";
 
 export class View<
   TABLE extends Table.AnyTable,
-  const KEYS extends readonly Key[],
+  const KEY extends Key[],
   const INCLUDES,
   ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<Table.InferRow<TABLE>>,
 > {
-  private _db: Database;
+  private _db: Database<INCLUDES, [...KEY, ROW["id"]]>;
 
-  constructor(private init: View.Init<TABLE, KEYS, INCLUDES, ROW>) {
-    const { name, env, table, unique } = init;
+  constructor(private init: View.Init<TABLE, KEY, INCLUDES, ROW>) {
+    const { name, env, table, unique, includes } = init;
     this._db = env.openDB({ name: `view:${name}` });
 
     table.$beforeInsert.pipe(
@@ -30,7 +30,7 @@ export class View<
             );
           }
 
-          this._db.put(keys, this._makeIncludes(newRow));
+          this._db.put(keys, includes(newRow));
         }
       }),
     );
@@ -43,9 +43,14 @@ export class View<
 
         if (unique && newKeys) {
           const rawKeys = newKeys.toSpliced(-1);
-          this.eq(...(rawKeys as never)).pipe(
-            listen((match) => {
-              if (match.id !== newRow.id) {
+          fromIterable(
+            this._db.getRange({
+              start: rawKeys as never,
+              end: [...rawKeys, "\xff"] as never,
+            }),
+          ).pipe(
+            listen(({ key }) => {
+              if ((key as Array<any>).pop() !== newRow.id) {
                 throw new Error(`duplicate keys: ${rawKeys}`);
               }
             }),
@@ -53,7 +58,7 @@ export class View<
         }
 
         if (oldKeys) this._db.remove(oldKeys);
-        if (newKeys) this._db.put(newKeys, this._makeIncludes(newRow));
+        if (newKeys) this._db.put(newKeys, includes(newRow));
       }),
     );
     table.$beforeDelete.pipe(
@@ -64,16 +69,13 @@ export class View<
     );
   }
 
-  private _makeKey(row: ROW): null | any[] {
-    const keys = this.init.keys(row);
+  private _makeKey(row: ROW): null | [...KEY, ROW["id"]] {
+    const keys = this.init.keySelector(row);
     if (!keys) return null;
-    return [...keys, row.id];
-  }
-  private _makeIncludes(row: ROW) {
-    return { id: row.id, includes: this.init.includes?.(row) };
+    return [...keys, row.id] as [...KEY, ROW["id"]];
   }
 
-  eq(...keys: Partial<KEYS>): Source<View.Value<ROW["id"], INCLUDES>> {
+  eq(...keys: Partial<KEY>): Source<INCLUDES> {
     return fromIterable(
       this._db.getRange({
         start: keys as never,
@@ -81,30 +83,27 @@ export class View<
       }),
     ).pipe(map((e) => e.value));
   }
-  lt(...keys: Partial<KEYS>): Source<View.Value<ROW["id"], INCLUDES>> {
+  lt(...keys: Partial<KEY>): Source<INCLUDES> {
     return fromIterable(this._db.getRange({ end: keys as never })).pipe(
       map((e) => e.value),
     );
   }
-  lte(...keys: Partial<KEYS>): Source<View.Value<ROW["id"], INCLUDES>> {
+  lte(...keys: Partial<KEY>): Source<INCLUDES> {
     return fromIterable(
       this._db.getRange({ end: [...keys, "\xff"] as never }),
     ).pipe(map((e) => e.value));
   }
-  gt(...keys: Partial<KEYS>): Source<View.Value<ROW["id"], INCLUDES>> {
+  gt(...keys: Partial<KEY>): Source<INCLUDES> {
     return fromIterable(
       this._db.getRange({ start: [...keys, "\xff"] as never }),
     ).pipe(map((e) => e.value));
   }
-  gte(...keys: Partial<KEYS>): Source<View.Value<ROW["id"], INCLUDES>> {
+  gte(...keys: Partial<KEY>): Source<INCLUDES> {
     return fromIterable(this._db.getRange({ start: keys as never })).pipe(
       map((e) => e.value),
     );
   }
-  between(
-    start: Partial<KEYS>,
-    end: Partial<KEYS>,
-  ): Source<View.Value<ROW["id"], INCLUDES>> {
+  between(start: Partial<KEY>, end: Partial<KEY>): Source<INCLUDES> {
     return fromIterable(
       this._db.getRange({
         start: start as never,
@@ -118,7 +117,7 @@ export namespace View {
   export type Value<ID extends Key, INCLUDES> = { id: ID; includes: INCLUDES };
   export type Init<
     TABLE extends Table.AnyTable,
-    KEYS extends readonly Key[],
+    KEY extends readonly Key[],
     INCLUDES,
     ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<
       Table.InferRow<TABLE>
@@ -127,8 +126,8 @@ export namespace View {
     name: string;
     env: RootDatabase;
     table: TABLE;
-    keys: (row: ROW) => KEYS | null | undefined;
-    includes?: (row: ROW) => INCLUDES;
+    keySelector: (row: ROW) => KEY | null | undefined;
+    includes: (row: ROW) => INCLUDES;
     unique?: boolean;
   };
 }
@@ -147,7 +146,7 @@ const view = new View({
   name: "myView",
   env: null as never,
   table: users,
-  keys(row) {
+  keySelector(row) {
     return [row.age, row.name] as [age: number, name: string];
   },
   includes(row) {
