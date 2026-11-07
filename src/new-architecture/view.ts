@@ -2,19 +2,21 @@ import { fromIterable, listen, map, Source } from "@watchmanlab/stream";
 import { Table } from "./table";
 import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
-import { ZodSchema } from "./zod-schema";
-import z from "zod";
 import { Queryable } from "./queryable";
 
 export class View<
-  ROW extends Record<string, any>,
+  NAME extends string,
+  TABLE extends Table.AnyTable,
   const KEY extends [Key, ...Key[]],
   const INCLUDES,
+  ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
 > implements Queryable<KEY, INCLUDES> {
+  private _name: NAME;
   protected _db: Database<INCLUDES, [...KEY, ROW["id"]]>;
 
-  constructor(protected init: View.Init<ROW, KEY, INCLUDES>) {
+  constructor(protected init: View.Init<NAME, TABLE, KEY, INCLUDES, ROW>) {
     const { name, env, table, unique, includes } = init;
+    this._name = name;
     this._db = env.openDB({ name: `view:${name}` });
 
     table.$beforeInsert.pipe(
@@ -68,7 +70,9 @@ export class View<
       }),
     );
   }
-
+  get name(): NAME {
+    return this._name;
+  }
   private _makeKey(row: ROW): null | [...KEY, ROW["id"]] {
     const keys = this.init.keySelector(row);
     if (!keys) return null;
@@ -113,14 +117,27 @@ export class View<
   }
 }
 
+export function createView<
+  NAME extends string,
+  TABLE extends Table.AnyTable,
+  const KEY extends [Key, ...Key[]],
+  const INCLUDES,
+  ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+>(init: Omit<View.Init<NAME, TABLE, KEY, INCLUDES, ROW>, "env">) {
+  return (env: RootDatabase) => new View({ ...init, env });
+}
+
 export namespace View {
   export type Value<ID extends Key, INCLUDES> = { id: ID; includes: INCLUDES };
+
   export type Init<
-    ROW extends Record<string, any>,
+    NAME extends string,
+    TABLE extends Table.AnyTable,
     KEY extends [Key, ...Key[]],
     INCLUDES,
+    ROW extends Table.InferRow<TABLE>,
   > = {
-    name: string;
+    name: NAME;
     env: RootDatabase;
     table: Table.AnyTable;
     keySelector: (row: ROW) => KEY | null | undefined;
@@ -128,29 +145,3 @@ export namespace View {
     unique?: boolean;
   };
 }
-
-const users = new Table({
-  name: "users",
-  env: null as never,
-  schema: new ZodSchema({
-    id: z.number(),
-    name: z.string(),
-    age: z.number(),
-  }),
-});
-
-const view = new View({
-  name: "myView",
-  env: null as never,
-  table: users,
-  keySelector(row) {
-    return [row.age, row.name] as [age: number, name: string];
-  },
-  includes(row) {
-    return { id: "" };
-  },
-});
-//get(age: number, name: string): void
-view.eq(33, "sof");
-view.lt(44);
-view.between([33], [44]);

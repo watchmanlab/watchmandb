@@ -10,12 +10,13 @@ import {
 import type { Database, GetOptions, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
 export class Table<
+  NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
   TX extends boolean = false,
   ROW extends SchemaProvider.InferOutput<SCHEMA> =
     SchemaProvider.InferOutput<SCHEMA>,
 > {
-  private _name: string;
+  private _name: NAME;
   private _db: Database<Readonly<ROW>>;
   private _schema: SCHEMA;
   private _$beforeInsert?: Stream<Readonly<ROW>>;
@@ -31,7 +32,7 @@ export class Table<
   private _$beforeDelete?: Stream<Readonly<ROW>>;
   private _$afterDelete?: Stream<Readonly<ROW>>;
 
-  constructor(init: Table.Init<SCHEMA>) {
+  constructor(init: Table.Init<NAME, SCHEMA>) {
     this._name = init.name;
     this._db = init.env.openDB({
       name: this._name,
@@ -39,7 +40,7 @@ export class Table<
     });
     this._schema = init.schema;
   }
-  get name(): string {
+  get name(): NAME {
     return this._name;
   }
   get $beforeInsert(): Source<Readonly<ROW>> {
@@ -147,14 +148,24 @@ export class Table<
       .pipe(terminate());
   }
 }
-
+export function createTable<
+  NAME extends string,
+  SCHEMA extends SchemaProvider.AnySchemaProvider,
+>(init: Omit<Table.Init<NAME, SCHEMA>, "env">) {
+  return (env: RootDatabase) => new Table({ ...init, env });
+}
 export namespace Table {
-  export type AnyTable = Table<any, any, any>;
+  export type AnyTable = Table<any, any, any, any>;
   export type InferRow<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, infer R> ? R : never;
+    TABLE extends Table<any, any, any, infer R> ? R : never;
+  export type InferName<TABLE extends AnyTable> =
+    TABLE extends Table<infer N, any, any, any> ? N : never;
 
-  export type Init<SCHEMA extends SchemaProvider.AnySchemaProvider> = {
-    name: string;
+  export type Init<
+    NAME extends string,
+    SCHEMA extends SchemaProvider.AnySchemaProvider,
+  > = {
+    name: NAME;
     env: RootDatabase;
     schema: SCHEMA;
   };

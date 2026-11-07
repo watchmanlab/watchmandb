@@ -3,17 +3,25 @@ import { Queryable } from "./queryable";
 import { Table } from "./table";
 import { View } from "./view";
 import { map, Source } from "@watchmanlab/stream";
+import { RootDatabase } from "lmdb";
 
 export class Index<
-  ROW extends Record<string, any>,
-  const KEY extends [keyof ROW, ...(keyof ROW)[]],
+  NAME extends string,
+  TABLE extends Table.AnyTable,
+  const KEY extends [
+    keyof Table.InferRow<TABLE>,
+    ...(keyof Table.InferRow<TABLE>)[],
+  ],
+  ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
 > implements Queryable<KEY, ROW> {
-  private _view: View<ROW, KEY, ROW["id"]>;
-  constructor(private init: Index.Init<ROW, KEY>) {
-    const { key, ...rest } = init;
-
+  private _name: NAME;
+  private _view: View<NAME, TABLE, KEY, ROW["id"], ROW>;
+  constructor(private init: Index.Init<NAME, TABLE, KEY, ROW>) {
+    const { key, name, ...rest } = init;
+    this._name = name;
     this._view = new View({
       ...rest,
+      name,
       keySelector(row) {
         return key.map((k) => row[k]) as never;
       },
@@ -22,7 +30,9 @@ export class Index<
       },
     });
   }
-
+  get name(): NAME {
+    return this._name;
+  }
   eq(...keys: Partial<KEY>): Source<ROW> {
     return this._view.eq(...keys).pipe(map((id) => this.init.table.get(id)));
   }
@@ -45,12 +55,35 @@ export class Index<
   }
 }
 
+export function createIndex<
+  NAME extends string,
+  TABLE extends Table.AnyTable,
+  const KEY extends [
+    keyof Table.InferRow<TABLE>,
+    ...(keyof Table.InferRow<TABLE>)[],
+  ],
+  ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+>(init: Omit<Index.Init<NAME, TABLE, KEY, ROW>, "env">) {
+  return (env: RootDatabase) => new Index({ ...init, env });
+}
+
 export namespace Index {
   export type Init<
-    ROW extends Record<string, any>,
-    KEY extends [keyof ROW, ...(keyof ROW)[]],
+    NAME extends string,
+    TABLE extends Table.AnyTable,
+    KEY extends [
+      keyof Table.InferRow<TABLE>,
+      ...(keyof Table.InferRow<TABLE>)[],
+    ],
+    ROW extends Table.InferRow<TABLE>,
   > = Omit<
-    View.Init<ROW, [...{ [K in keyof KEY]: ROW[KEY[K]] }], ROW["id"]>,
+    View.Init<
+      NAME,
+      TABLE,
+      [...{ [K in keyof KEY]: ROW[KEY[K]] }],
+      ROW["id"],
+      ROW
+    >,
     "includes" | "keySelector"
   > & { key: KEY };
 }

@@ -1,11 +1,13 @@
 import { open, RootDatabase, RootDatabaseOptions } from "lmdb";
-import { Table } from "./table";
 
 export class WatchmanDB<
-  TABLES extends readonly [Table.AnyTable, ...Table.AnyTable[]],
+  ENTRIES extends readonly [
+    (env: RootDatabase) => void,
+    ...((env: RootDatabase) => void)[],
+  ],
 > {
   private env: RootDatabase;
-  constructor(path: string, tables: TABLES, options?: RootDatabaseOptions) {
+  constructor(path: string, entries: ENTRIES, options?: RootDatabaseOptions) {
     this.env = open(path, options ?? {});
   }
 }
