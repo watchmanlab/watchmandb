@@ -11,7 +11,7 @@ export class Index<
     ...(keyof Table.InferRow<TABLE>)[],
   ],
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
-> implements Queryable<KEY, ROW> {
+> {
   private _name: NAME;
   private _view: View<NAME, TABLE, KEY, ROW["id"], ROW>;
   constructor(private init: Index.Init<NAME, TABLE, KEY, ROW>) {
@@ -75,7 +75,7 @@ export namespace Index {
       keyof Table.InferRow<TABLE>,
       ...(keyof Table.InferRow<TABLE>)[],
     ],
-    ROW extends Table.InferRow<TABLE>,
+    ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
   > = Omit<
     View.Init<
       NAME,
