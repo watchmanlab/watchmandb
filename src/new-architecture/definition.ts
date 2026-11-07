@@ -9,44 +9,57 @@ export type IndexDefinition<
   KEY extends (keyof Table.InferRow<TABLE>)[],
 > = Omit<Index.Init<TABLE, KEY>, "env" | "name" | "table">;
 
-export type TableDefinition<SCHEMA extends SchemaProvider.AnySchemaProvider> = {
-  schema: SCHEMA;
-  indexes: {
-    [K: string]: IndexDefinition<
-      Table<SCHEMA>,
-      (keyof Table.InferRow<Table<SCHEMA>>)[]
-    >;
-  };
-};
-export function defineIndex<
+export type Indexes<
   TABLE extends Table.AnyTable,
   KEY extends (keyof Table.InferRow<TABLE>)[],
+> = {
+  [K in string]: IndexDefinition<TABLE, KEY>;
+};
+
+export type TableDefinition<
+  SCHEMA extends SchemaProvider.AnySchemaProvider,
+  INDEXES extends Indexes<
+    Table<SCHEMA>,
+    (keyof Table.InferRow<Table<SCHEMA>>)[]
+  >,
+> = {
+  schema: SCHEMA;
+  indexes: INDEXES;
+};
+
+export function defineIndex<
+  TABLE extends Table.AnyTable,
+  const KEY extends [
+    keyof Table.InferRow<TABLE>,
+    ...(keyof Table.InferRow<TABLE>)[],
+  ],
 >(def: IndexDefinition<TABLE, KEY>) {
   return def;
 }
-export function defineTable<SCHEMA extends SchemaProvider.AnySchemaProvider>(
-  def: TableDefinition<SCHEMA>,
-) {
+export function defineTable<
+  SCHEMA extends SchemaProvider.AnySchemaProvider,
+  INDEXES extends Indexes<
+    Table<SCHEMA>,
+    (keyof Table.InferRow<Table<SCHEMA>>)[]
+  >,
+>(def: TableDefinition<SCHEMA, INDEXES>) {
   return def;
 }
-export function create<DEF extends Record<string, TableDefinition<any>>>(
+export function create<DEF extends Record<string, TableDefinition<any, any>>>(
   def: DEF,
 ) {
   return def;
 }
 
 const v = create({
-  users: {
+  users: defineTable({
     schema: new ZodSchema({
       id: z.number(),
       name: z.string(),
       age: z.number(),
     }),
     indexes: {
-      byName: {
-        key: ["ddd"],
-        unique: false,
-      },
+      byName: defineIndex({ key: ["name"] }),
     },
-  },
+  }),
 });
