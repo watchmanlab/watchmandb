@@ -123,8 +123,8 @@ export function createView<
   const KEY extends [Key, ...Key[]],
   const INCLUDES,
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
->(init: Omit<View.Init<NAME, TABLE, KEY, INCLUDES, ROW>, "env">) {
-  return (env: RootDatabase) => new View({ ...init, env });
+>(init: Omit<View.Init<NAME, TABLE, KEY, INCLUDES, ROW>, "env" | "table">) {
+  return (env: RootDatabase, table: TABLE) => new View({ ...init, env, table });
 }
 
 export namespace View {

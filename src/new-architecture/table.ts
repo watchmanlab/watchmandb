@@ -9,6 +9,9 @@ import {
 } from "@watchmanlab/stream";
 import type { Database, GetOptions, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
+import { ZodSchema } from "./zod-schema";
+import z from "zod";
+import { createIndex, Index } from ".";
 export class Table<
   NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
@@ -152,7 +155,32 @@ export function createTable<
   NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
 >(init: Omit<Table.Init<NAME, SCHEMA>, "env">) {
-  return (env: RootDatabase) => new Table({ ...init, env });
+  const indexes:((env:RootDatabase,table:Table<NAME, SCHEMA>)=>Index<>)[] = [];
+  return {
+    init: (env: RootDatabase) => {
+      const table = new Table({ ...init, env })
+      indexes.forEach(fn=>fn(env,table))
+    },
+    createIndex: <
+      N extends string,
+      KEY extends [
+        SchemaProvider.InferOutput<SCHEMA>,
+        ...SchemaProvider.InferOutput<SCHEMA>[],
+      ],
+    >(
+      init: Omit<
+        Index.Init<
+          N,
+          Table<NAME, SCHEMA>,
+          KEY,
+          SchemaProvider.InferOutput<SCHEMA>
+        >,
+        "env" | "table"
+      >,
+    ) => {
+      indexes.push((env:RootDatabase,table:Table<NAME, SCHEMA>)=>new Index({...init,env,table}));
+    },
+  };
 }
 export namespace Table {
   export type AnyTable = Table<any, any, any, any>;
@@ -170,3 +198,8 @@ export namespace Table {
     schema: SCHEMA;
   };
 }
+
+const users = createTable({
+  name: "users",
+  schema: new ZodSchema({ id: z.number(), name: z.string(), age: z.number() }),
+});

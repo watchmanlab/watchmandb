@@ -1,4 +1,3 @@
-import { keyof } from "zod";
 import { Queryable } from "./queryable";
 import { Table } from "./table";
 import { View } from "./view";
@@ -63,8 +62,9 @@ export function createIndex<
     ...(keyof Table.InferRow<TABLE>)[],
   ],
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
->(init: Omit<Index.Init<NAME, TABLE, KEY, ROW>, "env">) {
-  return (env: RootDatabase) => new Index({ ...init, env });
+>(init: Omit<Index.Init<NAME, TABLE, KEY, ROW>, "env" | "table">) {
+  return (env: RootDatabase, table: TABLE) =>
+    new Index({ ...init, env, table });
 }
 
 export namespace Index {
