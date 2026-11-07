@@ -1,3 +1,4 @@
+import { Queryable } from "./queryable";
 import { Table } from "./table";
 import { View } from "./view";
 import { map, Source } from "@watchmanlab/stream";
@@ -6,7 +7,7 @@ export class Index<
   TABLE extends Table.AnyTable,
   const KEY extends (keyof Table.InferRow<TABLE>)[],
   ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<Table.InferRow<TABLE>>,
-> {
+> implements Queryable<KEY, ROW> {
   private _view: View<TABLE, KEY, ROW["id"]>;
   constructor(private init: Index.Init<TABLE, KEY>) {
     const { key, ...rest } = init;

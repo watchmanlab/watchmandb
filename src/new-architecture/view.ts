@@ -4,13 +4,14 @@ import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
 import { ZodSchema } from "./zod-schema";
 import z from "zod";
+import { Queryable } from "./queryable";
 
 export class View<
   TABLE extends Table.AnyTable,
   const KEY extends Key[],
   const INCLUDES,
   ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<Table.InferRow<TABLE>>,
-> {
+> implements Queryable<KEY, INCLUDES> {
   protected _db: Database<INCLUDES, [...KEY, ROW["id"]]>;
 
   constructor(protected init: View.Init<TABLE, KEY, INCLUDES, ROW>) {

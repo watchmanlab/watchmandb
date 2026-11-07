@@ -10,13 +10,12 @@ import {
 import type { Database, GetOptions, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
 export class Table<
-  NAME extends string,
-  SCHEMA extends SchemaProvider<any, any>,
+  SCHEMA extends SchemaProvider.AnySchemaProvider,
   TX extends boolean = false,
   ROW extends SchemaProvider.InferOutput<SCHEMA> =
     SchemaProvider.InferOutput<SCHEMA>,
 > {
-  private _name: NAME;
+  private _name: string;
   private _db: Database<Readonly<ROW>>;
   private _schema: SCHEMA;
   private _$beforeInsert?: Stream<Readonly<ROW>>;
@@ -32,7 +31,7 @@ export class Table<
   private _$beforeDelete?: Stream<Readonly<ROW>>;
   private _$afterDelete?: Stream<Readonly<ROW>>;
 
-  constructor(init: { name: NAME; env: RootDatabase; schema: SCHEMA }) {
+  constructor(init: Table.Init<SCHEMA>) {
     this._name = init.name;
     this._db = init.env.openDB({
       name: this._name,
@@ -150,9 +149,13 @@ export class Table<
 }
 
 export namespace Table {
-  export type AnyTable = Table<any, any, any, any>;
+  export type AnyTable = Table<any, any, any>;
   export type InferRow<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, any, infer R> ? R : never;
-  export type InferName<TABLE extends AnyTable> =
-    TABLE extends Table<infer N, any, any, any> ? N : never;
+    TABLE extends Table<any, any, infer R> ? R : never;
+
+  export type Init<SCHEMA extends SchemaProvider.AnySchemaProvider> = {
+    name: string;
+    env: RootDatabase;
+    schema: SCHEMA;
+  };
 }
