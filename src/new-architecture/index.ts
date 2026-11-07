@@ -1,15 +1,15 @@
+import { keyof } from "zod";
 import { Queryable } from "./queryable";
 import { Table } from "./table";
 import { View } from "./view";
 import { map, Source } from "@watchmanlab/stream";
 
 export class Index<
-  TABLE extends Table.AnyTable,
-  const KEY extends (keyof Table.InferRow<TABLE>)[],
-  ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<Table.InferRow<TABLE>>,
+  ROW extends Record<string, any>,
+  const KEY extends [keyof ROW, ...(keyof ROW)[]],
 > implements Queryable<KEY, ROW> {
-  private _view: View<TABLE, KEY, ROW["id"]>;
-  constructor(private init: Index.Init<TABLE, KEY>) {
+  private _view: View<ROW, KEY, ROW["id"]>;
+  constructor(private init: Index.Init<ROW, KEY>) {
     const { key, ...rest } = init;
 
     this._view = new View({
@@ -47,13 +47,10 @@ export class Index<
 
 export namespace Index {
   export type Init<
-    TABLE extends Table.AnyTable,
-    KEY extends (keyof Table.InferRow<TABLE>)[],
-    ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<
-      Table.InferRow<TABLE>
-    >,
+    ROW extends Record<string, any>,
+    KEY extends [keyof ROW, ...(keyof ROW)[]],
   > = Omit<
-    View.Init<TABLE, [...{ [K in keyof KEY]: ROW[KEY[K]] }], ROW["id"], ROW>,
+    View.Init<ROW, [...{ [K in keyof KEY]: ROW[KEY[K]] }], ROW["id"]>,
     "includes" | "keySelector"
   > & { key: KEY };
 }

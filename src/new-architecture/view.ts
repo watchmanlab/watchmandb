@@ -7,14 +7,13 @@ import z from "zod";
 import { Queryable } from "./queryable";
 
 export class View<
-  TABLE extends Table.AnyTable,
-  const KEY extends Key[],
+  ROW extends Record<string, any>,
+  const KEY extends [Key, ...Key[]],
   const INCLUDES,
-  ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<Table.InferRow<TABLE>>,
 > implements Queryable<KEY, INCLUDES> {
   protected _db: Database<INCLUDES, [...KEY, ROW["id"]]>;
 
-  constructor(protected init: View.Init<TABLE, KEY, INCLUDES, ROW>) {
+  constructor(protected init: View.Init<ROW, KEY, INCLUDES>) {
     const { name, env, table, unique, includes } = init;
     this._db = env.openDB({ name: `view:${name}` });
 
@@ -117,16 +116,13 @@ export class View<
 export namespace View {
   export type Value<ID extends Key, INCLUDES> = { id: ID; includes: INCLUDES };
   export type Init<
-    TABLE extends Table.AnyTable,
-    KEY extends Key[],
+    ROW extends Record<string, any>,
+    KEY extends [Key, ...Key[]],
     INCLUDES,
-    ROW extends Readonly<Table.InferRow<TABLE>> = Readonly<
-      Table.InferRow<TABLE>
-    >,
   > = {
     name: string;
     env: RootDatabase;
-    table: TABLE;
+    table: Table.AnyTable;
     keySelector: (row: ROW) => KEY | null | undefined;
     includes: (row: ROW) => INCLUDES;
     unique?: boolean;
