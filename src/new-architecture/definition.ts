@@ -6,7 +6,7 @@ import { ZodSchema } from "./zod-schema";
 
 export type IndexDefinition<
   ROW extends Record<string, any>,
-  KEY extends [keyof ROW, ...(keyof ROW)[]],
+  out KEY extends [keyof ROW, ...(keyof ROW)[]],
 > = Omit<Index.Init<ROW, KEY>, "env" | "name" | "table">;
 
 export type IndexesDefinition<SCHEMA extends SchemaProvider.AnySchemaProvider> =
@@ -23,7 +23,7 @@ export type IndexesDefinition<SCHEMA extends SchemaProvider.AnySchemaProvider> =
 
 export type TableDefinition<
   SCHEMA extends SchemaProvider.AnySchemaProvider,
-  INDEXES extends IndexesDefinition<SCHEMA>,
+  out INDEXES extends IndexesDefinition<SCHEMA>,
 > = {
   schema: SCHEMA;
   indexes: INDEXES;
@@ -31,13 +31,13 @@ export type TableDefinition<
 
 export function defineIndex<
   ROW extends Record<string, any>,
-  const KEY extends [keyof ROW, ...(keyof ROW)[]],
->(def: IndexDefinition<ROW, KEY>) {
+  KEY extends [keyof ROW, ...(keyof ROW)[]],
+>(def: IndexDefinition<ROW, KEY>): IndexDefinition<ROW, KEY> {
   return def;
 }
 export function defineTable<
   SCHEMA extends SchemaProvider.AnySchemaProvider,
-  const INDEXES extends IndexesDefinition<SCHEMA>,
+  INDEXES extends IndexesDefinition<SCHEMA>,
 >(schema: SCHEMA, indexes?: INDEXES) {
   return {
     schema,
@@ -51,7 +51,7 @@ export function create<DEF extends Record<string, TableDefinition<any, any>>>(
   return def;
 }
 
-const v = create({
+const db = create({
   users: defineTable(
     new ZodSchema({
       id: z.number(),
@@ -59,7 +59,7 @@ const v = create({
       age: z.number(),
     }),
     {
-      byName: { key: ["name", "age"] },
+      byName: defineIndex({ key: ["name", "age"] }),
     },
   ),
 });
