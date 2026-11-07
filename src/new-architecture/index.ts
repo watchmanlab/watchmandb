@@ -24,13 +24,19 @@ export class Index<
       keySelector(row) {
         return key.map((k) => row[k]) as never;
       },
-      includes(row) {
+      map(row) {
         return row.id as ROW["id"];
       },
     });
   }
   get name(): NAME {
     return this._name;
+  }
+  has(...keys: Partial<KEY>): boolean {
+    return this._view.has(...keys);
+  }
+  get(...keys: Partial<KEY>): ROW | undefined {
+    return this._view.get(...keys);
   }
   eq(...keys: Partial<KEY>): Source<ROW> {
     return this._view.eq(...keys).pipe(map((id) => this.init.table.get(id)));
@@ -71,6 +77,6 @@ export namespace Index {
       ROW["id"],
       ROW
     >,
-    "includes" | "keySelector"
+    "map" | "keySelector"
   > & { key: KEY };
 }

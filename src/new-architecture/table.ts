@@ -234,7 +234,7 @@ const view = users.defineView({
   keySelector(row) {
     return ["kd"] as [kd: "kd"];
   },
-  includes(row) {
+  map(row) {
     return row;
   },
 });

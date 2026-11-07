@@ -12,10 +12,10 @@ export class View<
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
 > implements Queryable<KEY, INCLUDES> {
   private _name: NAME;
-  protected _db: Database<INCLUDES, [...KEY, ROW["id"]]>;
+  protected _db: Database<INCLUDES, Key[]>;
 
   constructor(protected init: View.Init<NAME, TABLE, KEY, INCLUDES, ROW>) {
-    const { name, env, table, unique, includes } = init;
+    const { name, env, table, unique, map } = init;
     this._name = name;
     this._db = env.openDB({ name: `view:${name}` });
 
@@ -32,7 +32,7 @@ export class View<
             );
           }
 
-          this._db.put(keys, includes(newRow));
+          this._db.put(keys, map(newRow));
         }
       }),
     );
@@ -45,14 +45,15 @@ export class View<
 
         if (unique && newKeys) {
           const rawKeys = newKeys.toSpliced(-1);
+
           fromIterable(
             this._db.getRange({
               start: rawKeys as never,
-              end: [...rawKeys, "\xff"] as never,
+              end: [...rawKeys, "\xff"],
             }),
           ).pipe(
             listen(({ key }) => {
-              if ((key as Array<any>).pop() !== newRow.id) {
+              if ((key as Array<any>).pop() === newRow.id) {
                 throw new Error(`duplicate keys: ${rawKeys}`);
               }
             }),
@@ -60,7 +61,7 @@ export class View<
         }
 
         if (oldKeys) this._db.remove(oldKeys);
-        if (newKeys) this._db.put(newKeys, includes(newRow));
+        if (newKeys) this._db.put(newKeys, map(newRow));
       }),
     );
     table.$beforeDelete.pipe(
@@ -78,7 +79,18 @@ export class View<
     if (!keys) return null;
     return [...keys, row.id] as [...KEY, ROW["id"]];
   }
-
+  has(...keys: Partial<KEY>): boolean {
+    for (const v of this.eq(...keys)) {
+      return true;
+    }
+    return false;
+  }
+  get(...keys: Partial<KEY>): INCLUDES | undefined {
+    for (const v of this.eq(...keys)) {
+      return v;
+    }
+    return;
+  }
   eq(...keys: Partial<KEY>): Source<INCLUDES> {
     return fromIterable(
       this._db.getRange({
@@ -118,7 +130,7 @@ export class View<
 }
 
 export namespace View {
-  export type Value<ID extends Key, INCLUDES> = { id: ID; includes: INCLUDES };
+  export type Value<ID extends Key, INCLUDES> = { id: ID; map: INCLUDES };
 
   export type Init<
     NAME extends string,
@@ -131,7 +143,7 @@ export namespace View {
     env: RootDatabase;
     table: Table.AnyTable;
     keySelector: (row: ROW) => KEY | null | undefined;
-    includes: (row: ROW) => INCLUDES;
+    map: (row: ROW) => INCLUDES;
     unique?: boolean;
   };
 }
