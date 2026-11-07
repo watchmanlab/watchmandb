@@ -1,111 +1,89 @@
-import type { Database, Key, RootDatabase } from "lmdb";
-import type { Table } from "./table";
-import {
-  filter,
-  fromIterable,
-  listen,
-  map,
-  Source,
-  tap,
-} from "@watchmanlab/stream";
-import { isDeepEqual } from "./utils";
-export type IndexMatchResult =
-  | { type: "FULL_COVER" }
-  | { type: "RESIDUAL_FILTER"; residualKeys: string[] }
-  | { type: "NO_COVER" };
-export class Index {
-  private _name: string;
-  private _db: Database;
-  private _table: Table<any, any, any, any>;
-  private _columns: string[];
+import { Queryable } from "./queryable";
+import { Table } from "./table";
+import { View } from "./view";
+import { map, Source } from "@watchmanlab/stream";
 
-  constructor(
-    env: RootDatabase,
-    table: Table<any, any, any, any>,
-    columns: string[],
-  ) {
-    this._name = ["index", ...columns, table.name].join(":");
-    this._db = env.openDB({ name: this._name });
-    this._table = table;
-    this._columns = columns;
-
-    // SYNC NEW INDEX
-    if (
-      this._db.getKeys()[Symbol.iterator]().next().done &&
-      !this._table.find()[Symbol.iterator]().next().done
-    ) {
-      this._db.transaction(() =>
-        this._table.find().pipe(listen((row) => this.insert(row))),
-      );
-    }
+export class Index<
+  NAME extends string,
+  TABLE extends Table.AnyTable,
+  const KEY extends [
+    keyof Table.InferRow<TABLE>,
+    ...(keyof Table.InferRow<TABLE>)[],
+  ],
+  ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+> implements Queryable<KEY, ROW> {
+  private _name: NAME;
+  private _view: View<NAME, TABLE, KEY, ROW["id"], ROW>;
+  constructor(private init: Index.Init<NAME, TABLE, KEY, ROW>) {
+    const { key, name, unique, ...rest } = init;
+    this._name = name;
+    this._view = new View({
+      ...rest,
+      name,
+      keySelector(row) {
+        return key.map((k) => row[k]) as never;
+      },
+      map(row) {
+        return row.id as ROW["id"];
+      },
+      ...(unique
+        ? {
+            onConflict(key) {
+              throw new Error(`conflict on key ${key}`);
+            },
+          }
+        : {}),
+    });
   }
-  get columns(): string[] {
-    return this._columns;
+  get name(): NAME {
+    return this._name;
   }
-
-  private _makeIndexKey(obj: Table.Row | Record<string, any>): Key[] {
-    const values = this._columns.map((col) => obj[col]);
-    if (obj?.id) values.push(obj.id);
-    return values;
+  has(...keys: Partial<KEY>): boolean {
+    return this._view.has(...keys);
   }
-  find(
-    query: Record<string, any>,
-    queryLen: number,
-  ): { source: Source<any>; strategy: Table.IndexStrategy } | undefined {
-    delete query.id;
-
-    const residualKeys: string[] = [];
-
-    for (let i = 0; i < Math.min(queryLen, this._columns.length); i++) {
-      const indexKey = this._columns[i]!;
-      if (!(indexKey in query)) {
-        residualKeys.push(indexKey);
-      }
-    }
-
-    // NO COVER
-    if (residualKeys.length >= queryLen) return;
-
-    const start = this._makeIndexKey(query);
-    const end = [...start, "\xff"];
-
-    let source = fromIterable(
-      this._db.getRange({ start, end, inclusiveEnd: true }),
-    ).pipe(map((e) => this._table.get(e.value)!));
-
-    if (residualKeys.length && residualKeys.length < queryLen) {
-      return {
-        source: source.pipe(
-          filter((row) =>
-            residualKeys.every((key) => isDeepEqual(row[key], query[key])),
-          ),
-        ),
-        strategy: "RESIDUAL_FILTER",
-      };
-    }
-
-    return { source, strategy: "FULL_COVER" };
+  get(...keys: Partial<KEY>): ROW | undefined {
+    return this._view.get(...keys);
   }
+  eq(...keys: Partial<KEY>): Source<ROW> {
+    return this._view.eq(...keys).pipe(map((id) => this.init.table.get(id)));
+  }
+  lt(...keys: Partial<KEY>): Source<ROW> {
+    return this._view.lt(...keys).pipe(map((id) => this.init.table.get(id)));
+  }
+  lte(...keys: Partial<KEY>): Source<ROW> {
+    return this._view.lte(...keys).pipe(map((id) => this.init.table.get(id)));
+  }
+  gt(...keys: Partial<KEY>): Source<ROW> {
+    return this._view.gt(...keys).pipe(map((id) => this.init.table.get(id)));
+  }
+  gte(...keys: Partial<KEY>): Source<ROW> {
+    return this._view.gte(...keys).pipe(map((id) => this.init.table.get(id)));
+  }
+  between(start: Partial<KEY>, end: Partial<KEY>): Source<ROW> {
+    return this._view
+      .between(start, end)
+      .pipe(map((id) => this.init.table.get(id)));
+  }
+}
 
-  insert(row: Table.Row): void {
-    const indexKey = this._makeIndexKey(row);
-    this._db.put(indexKey, row.id);
-  }
-  update(newRow: Table.Row, oldRow: Table.Row): void {
-    const oldIndexKey = this._makeIndexKey(oldRow);
-    const newIndexKey = this._makeIndexKey(newRow);
-
-    if (!isDeepEqual(oldIndexKey, newIndexKey)) {
-      this._db.remove(oldIndexKey);
-      this._db.put(newIndexKey, newRow.id);
-    }
-  }
-
-  delete(row: Table.Row): void {
-    const indexKey = this._makeIndexKey(row);
-    this._db.remove(indexKey);
-  }
-  clear(): Promise<void> {
-    return this._db.clearAsync();
-  }
+export namespace Index {
+  export type AnyIndex = Index<any, any, any, any>;
+  export type Init<
+    NAME extends string,
+    TABLE extends Table.AnyTable,
+    KEY extends [
+      keyof Table.InferRow<TABLE>,
+      ...(keyof Table.InferRow<TABLE>)[],
+    ],
+    ROW extends Table.InferRow<TABLE>,
+  > = Omit<
+    View.Init<
+      NAME,
+      TABLE,
+      [...{ [K in keyof KEY]: ROW[KEY[K]] }],
+      ROW["id"],
+      ROW
+    >,
+    "map" | "keySelector" | "onConflict"
+  > & { key: KEY; unique?: boolean };
 }

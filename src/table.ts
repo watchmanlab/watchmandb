@@ -1,19 +1,26 @@
-import { filter, fromIterable, map, Source, Stream } from "@watchmanlab/stream";
+import {
+  fromIterable,
+  listen,
+  Source,
+  Stream,
+  Terminate,
+  terminate,
+  TerminateReason,
+} from "@watchmanlab/stream";
 import type { Database, GetOptions, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
 import { Index } from ".";
-import { isDeepEqual } from "./utils";
-
+import { View } from "./view";
 export class Table<
-  SCHEMA,
-  ROW extends Table.Row,
-  IDX_COLS extends any[][],
+  NAME extends string,
+  SCHEMA extends SchemaProvider.AnySchemaProvider,
   TX extends boolean = false,
+  ROW extends SchemaProvider.InferOutput<SCHEMA> =
+    SchemaProvider.InferOutput<SCHEMA>,
 > {
-  private _name: string;
+  private _name: NAME;
   private _db: Database<Readonly<ROW>>;
-  private _schemaProvider: SchemaProvider<SCHEMA, ROW>;
-  private _indexes?: Index[];
+  private _schema: SCHEMA;
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
   private _$beforeUpdate?: Stream<{
@@ -27,27 +34,22 @@ export class Table<
   private _$beforeDelete?: Stream<Readonly<ROW>>;
   private _$afterDelete?: Stream<Readonly<ROW>>;
 
-  constructor(
-    name: string,
-    env: RootDatabase,
-    schemaProvider: SchemaProvider<SCHEMA, ROW>,
-    indexesCols: IDX_COLS,
-  ) {
-    this._name = name;
-    this._db = env.openDB({ name, sharedStructuresKey: Symbol.for(name) });
-    this._schemaProvider = schemaProvider;
-    this._indexes = indexesCols
-      .sort((a, b) => b.length - a.length)
-      .map((cols) => new Index(env, this, cols));
+  constructor(init: Table.Init<NAME, SCHEMA>) {
+    this._name = init.name;
+    this._db = init.env.openDB({
+      name: this._name,
+      sharedStructuresKey: Symbol.for(this._name),
+    });
+    this._schema = init.schema;
   }
-  get name(): string {
+  get name(): NAME {
     return this._name;
-  }
-  get $afterInsert(): Source<Readonly<ROW>> {
-    return Source.from((this._$afterInsert ??= new Stream()));
   }
   get $beforeInsert(): Source<Readonly<ROW>> {
     return Source.from((this._$beforeInsert ??= new Stream()));
+  }
+  get $afterInsert(): Source<Readonly<ROW>> {
+    return Source.from((this._$afterInsert ??= new Stream()));
   }
   get $beforeUpdate(): Source<{
     newRow: Readonly<ROW>;
@@ -64,74 +66,8 @@ export class Table<
   get $afterDelete(): Source<Readonly<ROW>> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
-
   get(id: ROW["id"], options?: GetOptions): ROW | undefined {
     return this._db.get(id, options);
-  }
-
-  find<
-    QYERY extends Partial<Omit<ROW, "id">>,
-    OPTIONS extends Table.FindOptions,
-  >(
-    query = {} as QYERY & Table.ValidateQuery<IDX_COLS, QYERY, OPTIONS>,
-    options?: OPTIONS,
-  ): Table.FindResult<
-    ROW,
-    OPTIONS["forceFullScan"] extends true
-      ? Table.Diagnostics<never, "FULL_SCAN">
-      : Table.DeduceStrategy<IDX_COLS, QYERY>
-  > {
-    const queryKeys = Object.keys(query) as string[];
-
-    // FULL SCAN + NO FILTER
-    if (queryKeys.length === 0) {
-      const source = fromIterable(this._db.getRange()).pipe(
-        map((e) => e.value),
-      );
-      return this._attachDiagnostics(source, undefined, "FULL_SCAN") as never;
-    }
-
-    // TRY INDEXES
-    if (this._indexes && !options?.forceFullScan) {
-      for (const index of this._indexes) {
-        const result = index.find(query, queryKeys.length);
-        if (!result) continue;
-
-        return this._attachDiagnostics(
-          result.source,
-          index.columns,
-          result.strategy,
-        ) as never;
-      }
-    }
-    // FULL SCAN + FILTER
-    const source = fromIterable(this._db.getRange({}))
-      .pipe(map((e) => e.value))
-      .pipe(
-        filter((row) => queryKeys.every((k) => isDeepEqual(query[k], row[k]))),
-      ) as never;
-
-    return this._attachDiagnostics(source, undefined, "FULL_SCAN") as never;
-  }
-
-  private _attachDiagnostics(
-    source: Source<ROW>,
-    index: string[] | undefined,
-    strategy: Table.IndexStrategy,
-  ) {
-    return Object.assign(source, {
-      __diagnostics: {
-        index,
-        strategy,
-      },
-    });
-  }
-  private _isInsideTransaction(): boolean {
-    try {
-      return this._db.getWriteTxnId() > 0;
-    } catch (error) {
-      return false;
-    }
   }
   insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
@@ -163,16 +99,19 @@ export class Table<
       return this._db.transaction(() => this._delete(id)) as never;
     }
   }
-  private _insert(row: ROW) {
+  private _isInsideTransaction(): boolean {
+    try {
+      return this._db.getWriteTxnId() > 0;
+    } catch (error) {
+      return false;
+    }
+  }
+  private _insert(row: ROW): boolean {
     if (this._db.doesExist(row.id)) return false;
 
-    const parsed = this._schemaProvider.parse(row);
+    const parsed = this._schema.parse(row);
 
     this._$beforeInsert?.push(parsed);
-
-    for (let i = 0; i < (this._indexes?.length ?? 0); i++) {
-      this._indexes?.[i]?.insert(parsed);
-    }
 
     this._db.put(parsed.id, parsed).then((r) => {
       if (r) this._$afterInsert?.push(parsed);
@@ -180,17 +119,13 @@ export class Table<
 
     return true;
   }
-  private _update(row: Partial<Omit<ROW, "id">> & Pick<ROW, "id">) {
+  private _update(row: Partial<Omit<ROW, "id">> & Pick<ROW, "id">): boolean {
     const oldRow = this._db.get(row.id);
     if (!oldRow) return false;
 
-    const parsed = this._schemaProvider.parse({ ...oldRow, ...row });
+    const parsed = this._schema.parse({ ...oldRow, ...row });
 
     this._$beforeUpdate?.push({ newRow: parsed, oldRow });
-
-    for (let i = 0; i < (this._indexes?.length ?? 0); i++) {
-      this._indexes?.[i]?.update(parsed, oldRow);
-    }
 
     this._db.put(parsed.id, parsed).then((r) => {
       if (r) this._$afterUpdate?.push({ newRow: parsed, oldRow });
@@ -198,93 +133,86 @@ export class Table<
 
     return true;
   }
-  private _delete(id: ROW["id"]) {
+  private _delete(id: ROW["id"]): boolean {
     const oldRow = this._db.get(id);
     if (!oldRow) return false;
 
     this._$beforeDelete?.push(oldRow);
-
-    for (let i = 0; i < (this._indexes?.length ?? 0); i++) {
-      this._indexes?.[i]?.delete(oldRow);
-    }
 
     this._db.remove(oldRow.id).then((r) => {
       if (r) this._$afterDelete?.push(oldRow);
     });
     return true;
   }
-  async clear(): Promise<void> {
-    await Promise.all([
-      this._db.clearAsync(),
-      this._indexes?.map((idx) => idx.clear()),
-    ]);
-    return;
+  clear(): Terminate<Source<TerminateReason>> {
+    return fromIterable(this._db.getKeys())
+      .pipe(listen((key) => this.delete(key)))
+      .pipe(terminate());
   }
 }
-
+export function defineTable<
+  NAME extends string,
+  SCHEMA extends SchemaProvider.AnySchemaProvider,
+>(init: Omit<Table.Init<NAME, SCHEMA>, "env">) {
+  const name = init.name;
+  return {
+    init: (env: RootDatabase) => new Table({ ...init, env }),
+    defineIndex: <
+      IDX_NAME extends string,
+      KEY extends [
+        keyof SchemaProvider.InferOutput<SCHEMA>,
+        ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
+      ],
+    >(
+      init: Omit<
+        Index.Init<
+          IDX_NAME,
+          Table<NAME, SCHEMA>,
+          KEY,
+          SchemaProvider.InferOutput<SCHEMA>
+        >,
+        "env" | "table"
+      >,
+    ) => ({
+      sourceName: name,
+      init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
+        new Index({ ...init, env, table }),
+    }),
+    defineView: <
+      VIEW_NAME extends string,
+      const KEY extends [Key, ...Key[]],
+      const INCLUDES,
+    >(
+      init: Omit<
+        View.Init<
+          VIEW_NAME,
+          Table<NAME, SCHEMA>,
+          KEY,
+          INCLUDES,
+          SchemaProvider.InferOutput<SCHEMA>
+        >,
+        "env" | "table"
+      >,
+    ) => ({
+      sourceName: name,
+      init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
+        new View({ ...init, env, table }),
+    }),
+  };
+}
 export namespace Table {
-  export type Row = Record<string, any> & { id: Key };
+  export type AnyTable = Table<any, any, any, any>;
+  export type InferRow<TABLE extends AnyTable> =
+    TABLE extends Table<any, any, any, infer R> ? R : never;
+  export type InferName<TABLE extends AnyTable> =
+    TABLE extends Table<infer N, any, any, any> ? N : never;
 
-  // export type
-  export type Query<T extends Record<string, any>> = {
-    [K in keyof T]: T[K] extends Key ? T[K] | `` : T[K];
+  export type Init<
+    NAME extends string,
+    SCHEMA extends SchemaProvider.AnySchemaProvider,
+  > = {
+    name: NAME;
+    env: RootDatabase;
+    schema: SCHEMA;
   };
-  export type InferRow<TABLE extends Table<any, any, any>> =
-    TABLE extends Table<any, infer R, any> ? R : never;
-
-  export type IndexMatch<
-    INDEX extends string[],
-    QUERY extends Record<string, any>,
-  > = keyof QUERY extends INDEX[number]
-    ? INDEX[0] extends keyof QUERY
-      ? "FULL_COVER"
-      : "NO_COVER"
-    : INDEX[number] extends keyof QUERY
-      ? "RESIDUAL_FILTER"
-      : INDEX[0] extends keyof QUERY
-        ? "RESIDUAL_FILTER"
-        : "NO_COVER";
-
-  export type DeduceStrategy<
-    INDEXES extends string[][],
-    QUERY extends Record<string, any>,
-  > = INDEXES extends [
-    infer FIRST extends string[],
-    ...infer REST extends string[][],
-  ]
-    ? IndexMatch<FIRST, QUERY> extends "NO_COVER"
-      ? DeduceStrategy<REST, QUERY>
-      : Diagnostics<FIRST, IndexMatch<FIRST, QUERY>>
-    : Diagnostics<never, "FULL_SCAN">;
-
-  export type IndexStrategy =
-    | "FULL_COVER"
-    | "NRESIDUAL_FILTER"
-    | "FULL_SCAN"
-    | (string & {});
-  export type Diagnostics<
-    INDEX extends string[] | undefined,
-    STRATEGY extends IndexStrategy,
-  > = { index: INDEX; strategy: STRATEGY };
-  export type FindResult<
-    ROW,
-    DIAGNOSTICS extends Diagnostics<any, any>,
-  > = Source<ROW> & {
-    __diagnostics: DIAGNOSTICS;
-  };
-  export interface FindOptions {
-    forceFullScan?: boolean;
-  }
-
-  export type ValidateQuery<
-    INDEXES extends string[][],
-    QUERY extends Record<string, any>,
-    OPTIONS extends FindOptions,
-  > = OPTIONS["forceFullScan"] extends true
-    ? QUERY
-    : DeduceStrategy<INDEXES, QUERY>["strategy"] extends "FULL_SCAN"
-      ? { [K in keyof QUERY]: QUERY[K] } & {
-          readonly __unindexed_query_error: "❌ WatchmanDB Error: This query results in a FULL_SCAN! Please add an appropriate index or pass { forceFullScan: true }.";
-        }
-      : QUERY; // Valid index found
 }

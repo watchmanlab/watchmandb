@@ -8,31 +8,31 @@ export class View<
   NAME extends string,
   TABLE extends Table.AnyTable,
   const KEY extends [Key, ...Key[]],
-  const INCLUDES,
+  const VALUE,
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
-> implements Queryable<KEY, INCLUDES> {
+> implements Queryable<KEY, VALUE> {
   private _name: NAME;
-  protected _db: Database<INCLUDES, Key[]>;
+  protected _db: Database<VALUE, Key[]>;
 
-  constructor(protected init: View.Init<NAME, TABLE, KEY, INCLUDES, ROW>) {
-    const { name, env, table, unique, map } = init;
+  constructor(protected init: View.Init<NAME, TABLE, KEY, VALUE, ROW>) {
+    const { name, env, table, onConflict, map } = init;
     this._name = name;
     this._db = env.openDB({ name: `view:${name}` });
 
     table.$beforeInsert.pipe(
       listen((newRow) => {
-        const keys = this._makeKey(newRow);
-        if (keys) {
-          if (unique) {
-            const rawKeys = keys.toSpliced(-1);
+        const key = this._makeKey(newRow);
+        if (key) {
+          if (onConflict) {
+            const rawKeys = key.toSpliced(-1);
             this.eq(...(rawKeys as never)).pipe(
-              listen(() => {
-                throw new Error(`duplicate keys: ${rawKeys}`);
+              listen((includes) => {
+                onConflict(rawKeys as never, newRow, includes);
               }),
             );
           }
 
-          this._db.put(keys, map(newRow));
+          this._db.put(key, map(newRow));
         }
       }),
     );
@@ -43,7 +43,7 @@ export class View<
 
         if (isDeepEqual(oldKeys, newKeys)) return;
 
-        if (unique && newKeys) {
+        if (onConflict && newKeys) {
           const rawKeys = newKeys.toSpliced(-1);
 
           fromIterable(
@@ -52,9 +52,9 @@ export class View<
               end: [...rawKeys, "\xff"],
             }),
           ).pipe(
-            listen(({ key }) => {
+            listen(({ key, value }) => {
               if ((key as Array<any>).pop() === newRow.id) {
-                throw new Error(`duplicate keys: ${rawKeys}`);
+                onConflict(rawKeys as never, newRow, value);
               }
             }),
           );
@@ -80,18 +80,14 @@ export class View<
     return [...keys, row.id] as [...KEY, ROW["id"]];
   }
   has(...keys: Partial<KEY>): boolean {
-    for (const v of this.eq(...keys)) {
-      return true;
-    }
+    for (const v of this.eq(...keys)) return true;
     return false;
   }
-  get(...keys: Partial<KEY>): INCLUDES | undefined {
-    for (const v of this.eq(...keys)) {
-      return v;
-    }
+  get(...keys: Partial<KEY>): VALUE | undefined {
+    for (const v of this.eq(...keys)) return v;
     return;
   }
-  eq(...keys: Partial<KEY>): Source<INCLUDES> {
+  eq(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(
       this._db.getRange({
         start: keys as never,
@@ -99,27 +95,27 @@ export class View<
       }),
     ).pipe(map((e) => e.value));
   }
-  lt(...keys: Partial<KEY>): Source<INCLUDES> {
+  lt(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(this._db.getRange({ end: keys as never })).pipe(
       map((e) => e.value),
     );
   }
-  lte(...keys: Partial<KEY>): Source<INCLUDES> {
+  lte(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(
       this._db.getRange({ end: [...keys, "\xff"] as never }),
     ).pipe(map((e) => e.value));
   }
-  gt(...keys: Partial<KEY>): Source<INCLUDES> {
+  gt(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(
       this._db.getRange({ start: [...keys, "\xff"] as never }),
     ).pipe(map((e) => e.value));
   }
-  gte(...keys: Partial<KEY>): Source<INCLUDES> {
+  gte(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(this._db.getRange({ start: keys as never })).pipe(
       map((e) => e.value),
     );
   }
-  between(start: Partial<KEY>, end: Partial<KEY>): Source<INCLUDES> {
+  between(start: Partial<KEY>, end: Partial<KEY>): Source<VALUE> {
     return fromIterable(
       this._db.getRange({
         start: start as never,
@@ -130,20 +126,20 @@ export class View<
 }
 
 export namespace View {
-  export type Value<ID extends Key, INCLUDES> = { id: ID; map: INCLUDES };
-
+  export type Value<ID extends Key, VALUE> = { id: ID; map: VALUE };
+  export type AnyView = View<any, any, any, any, any>;
   export type Init<
     NAME extends string,
     TABLE extends Table.AnyTable,
     KEY extends [Key, ...Key[]],
-    INCLUDES,
+    VALUE,
     ROW extends Table.InferRow<TABLE>,
   > = {
     name: NAME;
     env: RootDatabase;
     table: Table.AnyTable;
     keySelector: (row: ROW) => KEY | null | undefined;
-    map: (row: ROW) => INCLUDES;
-    unique?: boolean;
+    map: (row: ROW) => VALUE;
+    onConflict?: (key: KEY, row: ROW, includes: VALUE) => NoInfer<VALUE>;
   };
 }
