@@ -1,4 +1,4 @@
-import { fromIterable, listen, map, Source } from "@watchmanlab/stream";
+import { filter, fromIterable, listen, map, Source } from "@watchmanlab/stream";
 import { Table } from "./table";
 import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
@@ -75,18 +75,27 @@ export class View<
   private _makeKey(row: ROW): [...KEY, ROW["id"]] {
     return [...this.init.keySelector(row), row.id] as [...KEY, ROW["id"]];
   }
-  has(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): boolean {
+  has(...keys: Partial<KEY>): boolean {
     for (const v of this.eq(...keys)) return true;
     return false;
   }
-  get(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): VALUE | undefined {
+  get(...keys: Partial<KEY>): VALUE | undefined {
     for (const v of this.eq(...keys)) return v;
     return;
   }
   all(): Source<VALUE> {
     return fromIterable(this._db.getRange({})).pipe(map((e) => e.value));
   }
-  eq(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
+  startWith(...keys: Partial<KEY>): Source<VALUE> {
+    return fromIterable(
+      this._db.getRange({
+        start: keys as never,
+      }),
+    )
+      .pipe(filter((e) => e.key.toString().startsWith(keys.toString())))
+      .pipe(map((e) => e.value));
+  }
+  eq(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(
       this._db.getRange({
         start: keys as never,
@@ -94,30 +103,27 @@ export class View<
       }),
     ).pipe(map((e) => e.value));
   }
-  lt(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
+  lt(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(this._db.getRange({ end: keys as never })).pipe(
       map((e) => e.value),
     );
   }
-  lte(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
+  lte(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(
       this._db.getRange({ end: [...keys, "\xff"] as never }),
     ).pipe(map((e) => e.value));
   }
-  gt(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
+  gt(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(
       this._db.getRange({ start: [...keys, "\xff"] as never }),
     ).pipe(map((e) => e.value));
   }
-  gte(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
+  gte(...keys: Partial<KEY>): Source<VALUE> {
     return fromIterable(this._db.getRange({ start: keys as never })).pipe(
       map((e) => e.value),
     );
   }
-  between(
-    start: [...{ [k in keyof KEY]?: KEY[k] }],
-    end: [...{ [k in keyof KEY]?: KEY[k] }],
-  ): Source<VALUE> {
+  between(start: Partial<KEY>, end: Partial<KEY>): Source<VALUE> {
     return fromIterable(
       this._db.getRange({
         start: start as never,

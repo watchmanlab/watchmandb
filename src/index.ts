@@ -38,31 +38,28 @@ class Index<
   get name(): NAME {
     return this._name;
   }
-  has(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): boolean {
+  has(...keys: Partial<KEY>): boolean {
     return this._view.has(...keys);
   }
-  get(...keys: [...{ [k in keyof KEY]: ROW[KEY[k]] }]): ROW | undefined {
+  get(...keys: Partial<KEY>): ROW | undefined {
     return this._view.get(...keys);
   }
-  eq(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<ROW> {
+  eq(...keys: Partial<KEY>): Source<ROW> {
     return this._view.eq(...keys).pipe(map((id) => this.init.table.get(id)));
   }
-  lt(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<ROW> {
+  lt(...keys: Partial<KEY>): Source<ROW> {
     return this._view.lt(...keys).pipe(map((id) => this.init.table.get(id)));
   }
-  lte(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<ROW> {
+  lte(...keys: Partial<KEY>): Source<ROW> {
     return this._view.lte(...keys).pipe(map((id) => this.init.table.get(id)));
   }
-  gt(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<ROW> {
+  gt(...keys: Partial<KEY>): Source<ROW> {
     return this._view.gt(...keys).pipe(map((id) => this.init.table.get(id)));
   }
-  gte(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<ROW> {
+  gte(...keys: Partial<KEY>): Source<ROW> {
     return this._view.gte(...keys).pipe(map((id) => this.init.table.get(id)));
   }
-  between(
-    start: [...{ [k in keyof KEY]?: ROW[KEY[k]] }],
-    end: [...{ [k in keyof KEY]?: ROW[KEY[k]] }],
-  ): Source<ROW> {
+  between(start: Partial<KEY>, end: Partial<KEY>): Source<ROW> {
     return this._view
       .between(start, end)
       .pipe(map((id) => this.init.table.get(id)));
