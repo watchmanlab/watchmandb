@@ -7,11 +7,12 @@ import {
   terminate,
   TerminateReason,
 } from "@watchmanlab/stream";
-import type { Database, GetOptions, RootDatabase } from "lmdb";
+import type { Database, GetOptions, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
 import { ZodSchema } from "./zod-schema";
 import z from "zod";
 import { Index } from ".";
+import { View } from "./view";
 export class Table<
   NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
@@ -174,13 +175,31 @@ export function defineTable<
         >,
         "env" | "table"
       >,
-    ) => {
-      return {
-        tableName: name,
-        init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
-          new Index({ ...init, env, table }),
-      };
-    },
+    ) => ({
+      sourceName: name,
+      init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
+        new Index({ ...init, env, table }),
+    }),
+    defineView: <
+      VIEW_NAME extends string,
+      const KEY extends [Key, ...Key[]],
+      const INCLUDES,
+    >(
+      init: Omit<
+        View.Init<
+          VIEW_NAME,
+          Table<NAME, SCHEMA>,
+          KEY,
+          INCLUDES,
+          SchemaProvider.InferOutput<SCHEMA>
+        >,
+        "env" | "table"
+      >,
+    ) => ({
+      sourceName: name,
+      init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
+        new View({ ...init, env, table }),
+    }),
   };
 }
 export namespace Table {
@@ -209,3 +228,18 @@ const userByName = users.defineIndex({
   name: "userByName",
   key: ["name", "age"],
 });
+
+const view = users.defineView({
+  name: "myView",
+  keySelector(row) {
+    return ["kd"] as [kd: "kd"];
+  },
+  includes(row) {
+    return row;
+  },
+});
+
+view
+  .init(null as never, null as never)
+  .eq()
+  .pipe(listen((value) => console.log(value)));

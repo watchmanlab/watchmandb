@@ -117,16 +117,6 @@ export class View<
   }
 }
 
-export function createView<
-  NAME extends string,
-  TABLE extends Table.AnyTable,
-  const KEY extends [Key, ...Key[]],
-  const INCLUDES,
-  ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
->(init: Omit<View.Init<NAME, TABLE, KEY, INCLUDES, ROW>, "env" | "table">) {
-  return (env: RootDatabase, table: TABLE) => new View({ ...init, env, table });
-}
-
 export namespace View {
   export type Value<ID extends Key, INCLUDES> = { id: ID; includes: INCLUDES };
 
