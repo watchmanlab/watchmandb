@@ -11,7 +11,7 @@ import type { Database, GetOptions, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
 import { ZodSchema } from "./zod-schema";
 import z from "zod";
-import { createIndex, Index } from ".";
+import { Index } from ".";
 export class Table<
   NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
@@ -151,26 +151,23 @@ export class Table<
       .pipe(terminate());
   }
 }
-export function createTable<
+export function defineTable<
   NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
 >(init: Omit<Table.Init<NAME, SCHEMA>, "env">) {
-  const indexes:((env:RootDatabase,table:Table<NAME, SCHEMA>)=>Index<>)[] = [];
+  const name = init.name;
   return {
-    init: (env: RootDatabase) => {
-      const table = new Table({ ...init, env })
-      indexes.forEach(fn=>fn(env,table))
-    },
-    createIndex: <
-      N extends string,
+    init: (env: RootDatabase) => new Table({ ...init, env }),
+    defineIndex: <
+      IDX_NAME extends string,
       KEY extends [
-        SchemaProvider.InferOutput<SCHEMA>,
-        ...SchemaProvider.InferOutput<SCHEMA>[],
+        keyof SchemaProvider.InferOutput<SCHEMA>,
+        ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
       ],
     >(
       init: Omit<
         Index.Init<
-          N,
+          IDX_NAME,
           Table<NAME, SCHEMA>,
           KEY,
           SchemaProvider.InferOutput<SCHEMA>
@@ -178,7 +175,11 @@ export function createTable<
         "env" | "table"
       >,
     ) => {
-      indexes.push((env:RootDatabase,table:Table<NAME, SCHEMA>)=>new Index({...init,env,table}));
+      return {
+        tableName: name,
+        init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
+          new Index({ ...init, env, table }),
+      };
     },
   };
 }
@@ -199,7 +200,12 @@ export namespace Table {
   };
 }
 
-const users = createTable({
+const users = defineTable({
   name: "users",
   schema: new ZodSchema({ id: z.number(), name: z.string(), age: z.number() }),
+});
+
+const userByName = users.defineIndex({
+  name: "userByName",
+  key: ["name", "age"],
 });

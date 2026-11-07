@@ -54,19 +54,6 @@ export class Index<
   }
 }
 
-export function createIndex<
-  NAME extends string,
-  TABLE extends Table.AnyTable,
-  const KEY extends [
-    keyof Table.InferRow<TABLE>,
-    ...(keyof Table.InferRow<TABLE>)[],
-  ],
-  ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
->(init: Omit<Index.Init<NAME, TABLE, KEY, ROW>, "env" | "table">) {
-  return (env: RootDatabase, table: TABLE) =>
-    new Index({ ...init, env, table });
-}
-
 export namespace Index {
   export type Init<
     NAME extends string,
