@@ -165,6 +165,7 @@ export function defineTable<
 export namespace Table {
   export type AnyTable = Table<any, any, any, any>;
   export type AnyDefinition = Definition<any, any>;
+  export type Row = Record<string, any> & { id: Key };
   export type InferRow<TABLE extends AnyTable> =
     TABLE extends Table<any, any, any, infer R> ? R : never;
   export type InferName<TABLE extends AnyTable> =

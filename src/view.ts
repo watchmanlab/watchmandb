@@ -2,7 +2,6 @@ import { fromIterable, listen, map, Source } from "@watchmanlab/stream";
 import { Table } from "./table";
 import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
-import { Queryable } from "./queryable";
 
 export class View<
   NAME extends string,

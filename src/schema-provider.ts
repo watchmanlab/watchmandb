@@ -1,4 +1,6 @@
-export interface SchemaProvider<SCHEMA, OUT extends Record<string, any>> {
+import { Table } from "./table";
+
+export interface SchemaProvider<SCHEMA, OUT extends Table.Row> {
   schema: SCHEMA;
   parse(data: unknown): Readonly<OUT>;
 }

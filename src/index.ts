@@ -3,7 +3,7 @@ import { Table } from "./table";
 import { View } from "./view";
 import { map, Source } from "@watchmanlab/stream";
 
-export class Index<
+class Index<
   NAME extends string,
   TABLE extends Table.AnyTable,
   const KEY extends [
