@@ -7,10 +7,7 @@ import { Queryable } from "./queryable";
 export class View<
   NAME extends string,
   TABLE extends Table.AnyTable,
-  const KEY extends [
-    keyof Table.InferRow<TABLE>,
-    ...(keyof Table.InferRow<TABLE>)[],
-  ],
+  const KEY extends [Key, ...Key[]],
   const VALUE,
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
 > {
@@ -20,7 +17,7 @@ export class View<
   constructor(protected init: View.Init<NAME, TABLE, KEY, VALUE, ROW>) {
     const { name, env, table, onConflict, map } = init;
     this._name = name;
-    this._db = env.openDB({ name: `view:${name}` });
+    this._db = env.openDB({ name: `view:${table.name}:${name}` });
 
     table.$beforeInsert.pipe(
       listen((newRow) => {
@@ -29,8 +26,8 @@ export class View<
         if (onConflict) {
           const rawKeys = key.toSpliced(-1);
           this.eq(...(rawKeys as never)).pipe(
-            listen((includes) => {
-              onConflict(rawKeys as never, newRow, includes);
+            listen((oldRow) => {
+              onConflict(rawKeys as never, newRow, oldRow);
             }),
           );
         }
@@ -77,17 +74,20 @@ export class View<
     return this._name;
   }
   private _makeKey(row: ROW): [...KEY, ROW["id"]] {
-    return [...this.init.key.map((k) => row[k]), row.id] as [...KEY, ROW["id"]];
+    return [...this.init.keySelector(row), row.id] as [...KEY, ROW["id"]];
   }
-  has(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): boolean {
+  has(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): boolean {
     for (const v of this.eq(...keys)) return true;
     return false;
   }
-  get(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): VALUE | undefined {
+  get(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): VALUE | undefined {
     for (const v of this.eq(...keys)) return v;
     return;
   }
-  eq(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<VALUE> {
+  all(): Source<VALUE> {
+    return fromIterable(this._db.getRange({})).pipe(map((e) => e.value));
+  }
+  eq(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
     return fromIterable(
       this._db.getRange({
         start: keys as never,
@@ -95,29 +95,29 @@ export class View<
       }),
     ).pipe(map((e) => e.value));
   }
-  lt(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<VALUE> {
+  lt(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
     return fromIterable(this._db.getRange({ end: keys as never })).pipe(
       map((e) => e.value),
     );
   }
-  lte(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<VALUE> {
+  lte(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
     return fromIterable(
       this._db.getRange({ end: [...keys, "\xff"] as never }),
     ).pipe(map((e) => e.value));
   }
-  gt(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<VALUE> {
+  gt(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
     return fromIterable(
       this._db.getRange({ start: [...keys, "\xff"] as never }),
     ).pipe(map((e) => e.value));
   }
-  gte(...keys: [...{ [k in keyof KEY]?: ROW[KEY[k]] }]): Source<VALUE> {
+  gte(...keys: [...{ [k in keyof KEY]?: KEY[k] }]): Source<VALUE> {
     return fromIterable(this._db.getRange({ start: keys as never })).pipe(
       map((e) => e.value),
     );
   }
   between(
-    start: [...{ [k in keyof KEY]?: ROW[KEY[k]] }],
-    end: [...{ [k in keyof KEY]?: ROW[KEY[k]] }],
+    start: [...{ [k in keyof KEY]?: KEY[k] }],
+    end: [...{ [k in keyof KEY]?: KEY[k] }],
   ): Source<VALUE> {
     return fromIterable(
       this._db.getRange({
@@ -126,6 +126,31 @@ export class View<
       }),
     ).pipe(map((e) => e.value));
   }
+}
+
+export function defineView<
+  NAME extends string,
+  TABLE_DEF extends Table.AnyDefinition,
+  KEY extends [Key, ...Key[]],
+  VALUE,
+>(config: {
+  name: NAME;
+  tableDefinition: TABLE_DEF;
+  keySelector: (row: Table.InferRow<Table.InferTable<TABLE_DEF>>) => KEY;
+  map: (row: Table.InferRow<Table.InferTable<TABLE_DEF>>) => VALUE;
+  onConflict?: (
+    key: KEY,
+    row: Table.InferRow<Table.InferTable<TABLE_DEF>>,
+    value: VALUE,
+  ) => VALUE;
+}) {
+  const { name, tableDefinition, keySelector, map, onConflict } = config;
+  return {
+    name,
+    tableDefinition,
+    init: (env: RootDatabase, table: Table.InferTable<TABLE_DEF>) =>
+      new View({ name, env, table, keySelector, map, onConflict }),
+  };
 }
 
 export namespace View {
@@ -141,8 +166,21 @@ export namespace View {
     name: NAME;
     env: RootDatabase;
     table: TABLE;
-    key: KEY;
+    keySelector: (row: ROW) => KEY;
     map: (row: ROW) => VALUE;
-    onConflict?: (key: KEY, row: ROW, includes: VALUE) => VALUE;
+    onConflict?: (key: KEY, row: ROW, value: VALUE) => VALUE;
   };
+  export interface Definition<
+    NAME extends string,
+    TABLE_DEF extends Table.AnyDefinition,
+    KEY extends [Key, ...Key[]],
+    VALUE,
+  > {
+    name: NAME;
+    tableDefinition: TABLE_DEF;
+    init: (
+      env: RootDatabase,
+      table: Table.InferTable<TABLE_DEF>,
+    ) => View<NAME, Table.InferTable<TABLE_DEF>, KEY, VALUE>;
+  }
 }

@@ -23,13 +23,17 @@ const byName = new View({
   name: "byName",
   env,
   table: users,
-  key: ["name", "age"],
+  keySelector(row) {
+    return ["name", "age"];
+  },
   map: (row) => row,
 });
 
 await users.insert({ id: 1, name: "sofiane", age: 42 });
 await users.insert({ id: 2, name: "soffinal", age: 40 });
+await users.insert({ id: 3, name: "zrezem", age: 22 });
+await users.insert({ id: 4, name: "amb", age: 22 });
 
-for (const v of byName.gt("sof")) {
+for (const v of byName.all()) {
   console.log(v);
 }

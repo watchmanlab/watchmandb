@@ -15,11 +15,14 @@ export class Index<
   private _name: NAME;
   private _view: View<NAME, TABLE, KEY, ROW["id"], ROW>;
   constructor(private init: Index.Init<NAME, TABLE, KEY, ROW>) {
-    const { name, unique, ...rest } = init;
+    const { name, key, unique, ...rest } = init;
     this._name = name;
     this._view = new View({
       ...rest,
       name,
+      keySelector(row) {
+        return key;
+      },
       map(row) {
         return row.id as ROW["id"];
       },

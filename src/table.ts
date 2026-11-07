@@ -9,8 +9,7 @@ import {
 } from "@watchmanlab/stream";
 import type { Database, GetOptions, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
-import { Index } from ".";
-import { View } from "./view";
+
 export class Table<
   NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
@@ -151,62 +150,29 @@ export class Table<
   }
 }
 
-// export function defineTable<
-//   NAME extends string,
-//   SCHEMA extends SchemaProvider.AnySchemaProvider,
-// >(init: Omit<Table.Init<NAME, SCHEMA>, "env">) {
-//   const name = init.name;
-//   return {
-//     init: (env: RootDatabase) => new Table({ ...init, env }),
-//     defineIndex: <
-//       IDX_NAME extends string,
-//       KEY extends [
-//         keyof SchemaProvider.InferOutput<SCHEMA>,
-//         ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
-//       ],
-//     >(
-//       init: Omit<
-//         Index.Init<
-//           IDX_NAME,
-//           Table<NAME, SCHEMA>,
-//           KEY,
-//           SchemaProvider.InferOutput<SCHEMA>
-//         >,
-//         "env" | "table"
-//       >,
-//     ) => ({
-//       sourceName: name,
-//       init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
-//         new Index({ ...init, env, table }),
-//     }),
-//     defineView: <
-//       VIEW_NAME extends string,
-//       const KEY extends [Key, ...Key[]],
-//       const INCLUDES,
-//     >(
-//       init: Omit<
-//         View.Init<
-//           VIEW_NAME,
-//           Table<NAME, SCHEMA>,
-//           KEY,
-//           INCLUDES,
-//           SchemaProvider.InferOutput<SCHEMA>
-//         >,
-//         "env" | "table"
-//       >,
-//     ) => ({
-//       sourceName: name,
-//       init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
-//         new View({ ...init, env, table }),
-//     }),
-//   };
-// }
+export function defineTable<
+  NAME extends string,
+  SCHEMA extends SchemaProvider.AnySchemaProvider,
+>(config: { name: NAME; schema: SCHEMA }): Table.Definition<NAME, SCHEMA> {
+  const { name, schema } = config;
+  return {
+    name,
+    schema,
+    init: (env: RootDatabase) => new Table({ env, name, schema }),
+  };
+}
+
 export namespace Table {
   export type AnyTable = Table<any, any, any, any>;
+  export type AnyDefinition = Definition<any, any>;
   export type InferRow<TABLE extends AnyTable> =
     TABLE extends Table<any, any, any, infer R> ? R : never;
   export type InferName<TABLE extends AnyTable> =
     TABLE extends Table<infer N, any, any, any> ? N : never;
+  export type InferTable<DEF extends Definition<any, any>> =
+    DEF extends Definition<infer NAME, infer SCHEMA>
+      ? Table<NAME, SCHEMA>
+      : never;
 
   export type Init<
     NAME extends string,
@@ -216,4 +182,13 @@ export namespace Table {
     env: RootDatabase;
     schema: SCHEMA;
   };
+
+  export interface Definition<
+    NAME extends string,
+    SCHEMA extends SchemaProvider.AnySchemaProvider,
+  > {
+    name: NAME;
+    schema: SCHEMA;
+    init(env: RootDatabase): Table<NAME, SCHEMA>;
+  }
 }
