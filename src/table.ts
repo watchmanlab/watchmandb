@@ -150,56 +150,57 @@ export class Table<
       .pipe(terminate());
   }
 }
-export function defineTable<
-  NAME extends string,
-  SCHEMA extends SchemaProvider.AnySchemaProvider,
->(init: Omit<Table.Init<NAME, SCHEMA>, "env">) {
-  const name = init.name;
-  return {
-    init: (env: RootDatabase) => new Table({ ...init, env }),
-    defineIndex: <
-      IDX_NAME extends string,
-      KEY extends [
-        keyof SchemaProvider.InferOutput<SCHEMA>,
-        ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
-      ],
-    >(
-      init: Omit<
-        Index.Init<
-          IDX_NAME,
-          Table<NAME, SCHEMA>,
-          KEY,
-          SchemaProvider.InferOutput<SCHEMA>
-        >,
-        "env" | "table"
-      >,
-    ) => ({
-      sourceName: name,
-      init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
-        new Index({ ...init, env, table }),
-    }),
-    defineView: <
-      VIEW_NAME extends string,
-      const KEY extends [Key, ...Key[]],
-      const INCLUDES,
-    >(
-      init: Omit<
-        View.Init<
-          VIEW_NAME,
-          Table<NAME, SCHEMA>,
-          KEY,
-          INCLUDES,
-          SchemaProvider.InferOutput<SCHEMA>
-        >,
-        "env" | "table"
-      >,
-    ) => ({
-      sourceName: name,
-      init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
-        new View({ ...init, env, table }),
-    }),
-  };
-}
+
+// export function defineTable<
+//   NAME extends string,
+//   SCHEMA extends SchemaProvider.AnySchemaProvider,
+// >(init: Omit<Table.Init<NAME, SCHEMA>, "env">) {
+//   const name = init.name;
+//   return {
+//     init: (env: RootDatabase) => new Table({ ...init, env }),
+//     defineIndex: <
+//       IDX_NAME extends string,
+//       KEY extends [
+//         keyof SchemaProvider.InferOutput<SCHEMA>,
+//         ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
+//       ],
+//     >(
+//       init: Omit<
+//         Index.Init<
+//           IDX_NAME,
+//           Table<NAME, SCHEMA>,
+//           KEY,
+//           SchemaProvider.InferOutput<SCHEMA>
+//         >,
+//         "env" | "table"
+//       >,
+//     ) => ({
+//       sourceName: name,
+//       init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
+//         new Index({ ...init, env, table }),
+//     }),
+//     defineView: <
+//       VIEW_NAME extends string,
+//       const KEY extends [Key, ...Key[]],
+//       const INCLUDES,
+//     >(
+//       init: Omit<
+//         View.Init<
+//           VIEW_NAME,
+//           Table<NAME, SCHEMA>,
+//           KEY,
+//           INCLUDES,
+//           SchemaProvider.InferOutput<SCHEMA>
+//         >,
+//         "env" | "table"
+//       >,
+//     ) => ({
+//       sourceName: name,
+//       init: (env: RootDatabase, table: Table<NAME, SCHEMA>) =>
+//         new View({ ...init, env, table }),
+//     }),
+//   };
+// }
 export namespace Table {
   export type AnyTable = Table<any, any, any, any>;
   export type InferRow<TABLE extends AnyTable> =
