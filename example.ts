@@ -34,7 +34,7 @@ await users.insert({ id: 3, name: "zrezem", age: 22 });
 await users.insert({ id: 4, name: "amb", age: 22 });
 
 console.time("");
-for (const v of byName.view.startWith("amb").pipe(map((id) => users.get(id)))) {
+for (const v of byName.startWith("amb").pipe(map((id) => users.get(id)))) {
   console.log(v);
 }
 console.timeEnd("");

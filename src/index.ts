@@ -1,7 +1,6 @@
 import { Key, RootDatabase } from "lmdb";
 import { Table } from "./table";
 import { View } from "./view";
-import { KeyOf } from "typebox";
 
 class Index<
   NAME extends string,
@@ -11,21 +10,18 @@ class Index<
     ...(keyof Table.InferRow<TABLE>)[],
   ],
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+> extends View<
+  NAME,
+  TABLE,
+  [...{ [k in keyof KEY]: ROW[KEY[k]] }],
+  ROW["id"],
+  ROW
 > {
-  private _name: NAME;
-  private _view: View<
-    NAME,
-    TABLE,
-    [...{ [k in keyof KEY]: ROW[KEY[k]] }],
-    ROW["id"],
-    ROW
-  >;
   constructor(init: Index.Init<NAME, TABLE, KEY, ROW>) {
-    const { name, key, unique, ...rest } = init;
-    this._name = name;
-    this._view = new View({
+    const { key, unique, ...rest } = init;
+    super({
       ...rest,
-      name,
+
       keySelector(row): [...{ [k in keyof KEY]: ROW[KEY[k]] }] {
         return key.map((k) => row[k]) as [...{ [k in keyof KEY]: ROW[KEY[k]] }];
       },
@@ -40,18 +36,6 @@ class Index<
           }
         : {}),
     });
-  }
-  get name(): NAME {
-    return this._name;
-  }
-  get view(): View<
-    NAME,
-    TABLE,
-    [...{ [k in keyof KEY]: ROW[KEY[k]] }],
-    ROW["id"],
-    ROW
-  > {
-    return this._view;
   }
 }
 
