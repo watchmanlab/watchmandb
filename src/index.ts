@@ -1,7 +1,5 @@
-import { Queryable } from "./queryable";
 import { Table } from "./table";
 import { View } from "./view";
-import { map, Source } from "@watchmanlab/stream";
 
 class Index<
   NAME extends string,
@@ -14,21 +12,21 @@ class Index<
 > {
   private _name: NAME;
   private _view: View<NAME, TABLE, KEY, ROW["id"], ROW>;
-  constructor(private init: Index.Init<NAME, TABLE, KEY, ROW>) {
+  constructor(init: Index.Init<NAME, TABLE, KEY, ROW>) {
     const { name, key, unique, ...rest } = init;
     this._name = name;
     this._view = new View({
       ...rest,
       name,
-      keySelector(row) {
+      keySelector(row): KEY {
         return key;
       },
-      map(row) {
-        return row.id as ROW["id"];
+      map(row): ROW["id"] {
+        return row.id;
       },
       ...(unique
         ? {
-            onConflict(key) {
+            onConflict(key): void {
               throw new Error(`conflict on key ${key}`);
             },
           }
@@ -38,31 +36,8 @@ class Index<
   get name(): NAME {
     return this._name;
   }
-  has(...keys: Partial<KEY>): boolean {
-    return this._view.has(...keys);
-  }
-  get(...keys: Partial<KEY>): ROW | undefined {
-    return this._view.get(...keys);
-  }
-  eq(...keys: Partial<KEY>): Source<ROW> {
-    return this._view.eq(...keys).pipe(map((id) => this.init.table.get(id)));
-  }
-  lt(...keys: Partial<KEY>): Source<ROW> {
-    return this._view.lt(...keys).pipe(map((id) => this.init.table.get(id)));
-  }
-  lte(...keys: Partial<KEY>): Source<ROW> {
-    return this._view.lte(...keys).pipe(map((id) => this.init.table.get(id)));
-  }
-  gt(...keys: Partial<KEY>): Source<ROW> {
-    return this._view.gt(...keys).pipe(map((id) => this.init.table.get(id)));
-  }
-  gte(...keys: Partial<KEY>): Source<ROW> {
-    return this._view.gte(...keys).pipe(map((id) => this.init.table.get(id)));
-  }
-  between(start: Partial<KEY>, end: Partial<KEY>): Source<ROW> {
-    return this._view
-      .between(start, end)
-      .pipe(map((id) => this.init.table.get(id)));
+  get view(): View<NAME, TABLE, KEY, ROW["id"], ROW> {
+    return this._view;
   }
 }
 

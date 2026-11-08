@@ -14,66 +14,72 @@ export class View<
   protected _db: Database<VALUE, Key[]>;
 
   constructor(protected init: View.Init<NAME, TABLE, KEY, VALUE, ROW>) {
-    const { name, env, table, onConflict, map } = init;
+    const { name, env, table } = init;
     this._name = name;
     this._db = env.openDB({ name: `view:${table.name}:${name}` });
-
-    table.$beforeInsert.pipe(
-      listen((newRow) => {
-        const key = this._makeKey(newRow);
-
-        if (onConflict) {
-          const rawKeys = key.toSpliced(-1);
-          this.eq(...(rawKeys as never)).pipe(
-            listen((oldRow) => {
-              onConflict(rawKeys as never, newRow, oldRow);
-            }),
-          );
-        }
-
-        this._db.put(key, map(newRow));
-      }),
-    );
+    this._init();
+    table.$beforeInsert.pipe(listen((newRow) => this._insert(newRow)));
     table.$beforeUpdate.pipe(
-      listen(({ newRow, oldRow }) => {
-        const oldKeys = this._makeKey(oldRow);
-        const newKeys = this._makeKey(newRow);
-
-        if (isDeepEqual(oldKeys, newKeys)) return;
-
-        if (onConflict) {
-          const rawKeys = newKeys.toSpliced(-1);
-
-          fromIterable(
-            this._db.getRange({
-              start: rawKeys as never,
-              end: [...rawKeys, "\xff"],
-            }),
-          ).pipe(
-            listen(({ key, value }) => {
-              if ((key as Array<any>).pop() === newRow.id) {
-                onConflict(rawKeys as never, newRow, value);
-              }
-            }),
-          );
-        }
-
-        this._db.remove(oldKeys);
-        this._db.put(newKeys, map(newRow));
-      }),
+      listen(({ newRow, oldRow }) => this._update(newRow, oldRow)),
     );
-    table.$beforeDelete.pipe(
-      listen((oldRow) => {
-        const keys = this._makeKey(oldRow);
-        if (keys) this._db.remove(keys);
-      }),
-    );
+    table.$beforeDelete.pipe(listen((oldRow) => this._delete(oldRow)));
   }
   get name(): NAME {
     return this._name;
   }
+  private _init() {
+    const { table } = this.init;
+    if (table.isEmpty || !this._db.getRange()[Symbol.iterator]().next().done)
+      return;
+    table.all().pipe(listen((row) => this._insert(row)));
+  }
   private _makeKey(row: ROW): [...KEY, ROW["id"]] {
     return [...this.init.keySelector(row), row.id] as [...KEY, ROW["id"]];
+  }
+  private _insert(newRow: ROW) {
+    const { onConflict, map } = this.init;
+    const key = this._makeKey(newRow);
+
+    if (onConflict) {
+      const rawKeys = key.toSpliced(-1);
+      this.eq(...(rawKeys as never)).pipe(
+        listen((oldRow) => {
+          onConflict!(rawKeys as never, newRow, oldRow);
+        }),
+      );
+    }
+
+    this._db.put(key, map(newRow));
+  }
+  private _update(newRow: ROW, oldRow: ROW) {
+    const { onConflict, map } = this.init;
+    const oldKeys = this._makeKey(oldRow);
+    const newKeys = this._makeKey(newRow);
+
+    if (isDeepEqual(oldKeys, newKeys)) return;
+
+    if (onConflict) {
+      const rawKeys = newKeys.toSpliced(-1) as KEY;
+
+      fromIterable(
+        this._db.getRange({
+          start: rawKeys,
+          end: [...rawKeys, "\xff"],
+        }),
+      ).pipe(
+        listen(({ key, value }) => {
+          if ((key as Array<any>).pop() === newRow.id) {
+            onConflict(rawKeys, newRow, value);
+          }
+        }),
+      );
+    }
+
+    this._db.remove(oldKeys);
+    this._db.put(newKeys, map(newRow));
+  }
+  private _delete(oldRow: ROW) {
+    this._db.remove(this._makeKey(oldRow));
   }
   has(...keys: Partial<KEY>): boolean {
     for (const v of this.eq(...keys)) return true;

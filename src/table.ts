@@ -1,6 +1,7 @@
 import {
   fromIterable,
   listen,
+  map,
   Source,
   Stream,
   Terminate,
@@ -20,6 +21,7 @@ export class Table<
   private _name: NAME;
   private _db: Database<Readonly<ROW>>;
   private _schema: SCHEMA;
+  private _length: number;
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
   private _$beforeUpdate?: Stream<{
@@ -40,6 +42,7 @@ export class Table<
       sharedStructuresKey: Symbol.for(this._name),
     });
     this._schema = init.schema;
+    this._length = 0;
   }
   get name(): NAME {
     return this._name;
@@ -65,8 +68,17 @@ export class Table<
   get $afterDelete(): Source<Readonly<ROW>> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
-  get(id: ROW["id"], options?: GetOptions): ROW | undefined {
-    return this._db.get(id, options);
+  get(id: ROW["id"]): ROW | undefined {
+    return this._db.get(id);
+  }
+  all(limit?: number): Source<ROW> {
+    return fromIterable(this._db.getRange({ limit })).pipe(map((e) => e.value));
+  }
+  get isEmpty(): boolean {
+    return this._db.getRange()[Symbol.iterator]().next().done == true;
+  }
+  get length() {
+    return this._length;
   }
   insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
@@ -113,7 +125,9 @@ export class Table<
     this._$beforeInsert?.push(parsed);
 
     this._db.put(parsed.id, parsed).then((r) => {
-      if (r) this._$afterInsert?.push(parsed);
+      if (!r) return;
+      this._length++;
+      this._$afterInsert?.push(parsed);
     });
 
     return true;
@@ -139,7 +153,9 @@ export class Table<
     this._$beforeDelete?.push(oldRow);
 
     this._db.remove(oldRow.id).then((r) => {
-      if (r) this._$afterDelete?.push(oldRow);
+      if (!r) return;
+      this._length--;
+      this._$afterDelete?.push(oldRow);
     });
     return true;
   }
