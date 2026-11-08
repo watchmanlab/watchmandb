@@ -154,7 +154,7 @@ export function defineView<
     row: Table.InferRow<Table.InferTable<TABLE_DEF>>,
     value: VALUE,
   ) => VALUE;
-}) {
+}): View.Definition<NAME, TABLE_DEF, KEY, VALUE> {
   const { name, tableDefinition, keySelector, map, onConflict } = config;
   return {
     name,

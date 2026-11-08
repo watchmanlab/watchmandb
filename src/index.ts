@@ -1,5 +1,7 @@
+import { Key, RootDatabase } from "lmdb";
 import { Table } from "./table";
 import { View } from "./view";
+import { KeyOf } from "typebox";
 
 class Index<
   NAME extends string,
@@ -11,15 +13,21 @@ class Index<
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
 > {
   private _name: NAME;
-  private _view: View<NAME, TABLE, KEY, ROW["id"], ROW>;
+  private _view: View<
+    NAME,
+    TABLE,
+    [...{ [k in keyof KEY]: ROW[KEY[k]] }],
+    ROW["id"],
+    ROW
+  >;
   constructor(init: Index.Init<NAME, TABLE, KEY, ROW>) {
     const { name, key, unique, ...rest } = init;
     this._name = name;
     this._view = new View({
       ...rest,
       name,
-      keySelector(row): KEY {
-        return key;
+      keySelector(row): [...{ [k in keyof KEY]: ROW[KEY[k]] }] {
+        return key.map((k) => row[k]) as [...{ [k in keyof KEY]: ROW[KEY[k]] }];
       },
       map(row): ROW["id"] {
         return row.id;
@@ -36,9 +44,37 @@ class Index<
   get name(): NAME {
     return this._name;
   }
-  get view(): View<NAME, TABLE, KEY, ROW["id"], ROW> {
+  get view(): View<
+    NAME,
+    TABLE,
+    [...{ [k in keyof KEY]: ROW[KEY[k]] }],
+    ROW["id"],
+    ROW
+  > {
     return this._view;
   }
+}
+
+export function defineIndex<
+  NAME extends string,
+  TABLE_DEF extends Table.AnyDefinition,
+  KEY extends [
+    keyof Table.InferRow<Table.InferTable<TABLE_DEF>>,
+    ...(keyof Table.InferRow<Table.InferTable<TABLE_DEF>>)[],
+  ],
+>(config: {
+  name: NAME;
+  tableDefinition: TABLE_DEF;
+  key: KEY;
+  unique?: boolean;
+}): Index.Definition<NAME, TABLE_DEF, KEY> {
+  const { name, tableDefinition, key, unique } = config;
+  return {
+    name,
+    tableDefinition,
+    init: (env: RootDatabase, table: Table.InferTable<TABLE_DEF>) =>
+      new Index({ name, env, table, key, unique }),
+  };
 }
 
 export namespace Index {
@@ -61,4 +97,20 @@ export namespace Index {
     >,
     "map" | "keySelector" | "onConflict"
   > & { key: KEY; unique?: boolean };
+
+  export interface Definition<
+    NAME extends string,
+    TABLE_DEF extends Table.AnyDefinition,
+    KEY extends [
+      keyof Table.InferRow<Table.InferTable<TABLE_DEF>>,
+      ...(keyof Table.InferRow<Table.InferTable<TABLE_DEF>>)[],
+    ],
+  > {
+    name: NAME;
+    tableDefinition: TABLE_DEF;
+    init: (
+      env: RootDatabase,
+      table: Table.InferTable<TABLE_DEF>,
+    ) => Index<NAME, Table.InferTable<TABLE_DEF>, KEY>;
+  }
 }
