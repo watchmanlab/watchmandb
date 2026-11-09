@@ -1,4 +1,12 @@
-import { filter, fromIterable, listen, map, Source } from "@watchmanlab/stream";
+import {
+  filter,
+  flat$,
+  fromIterable,
+  listen,
+  map,
+  of,
+  Source,
+} from "@watchmanlab/stream";
 import { Table } from "./table";
 import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
@@ -97,6 +105,12 @@ export class View<
       this._db.getRange({ start: [key], end: [key, "\xff"] }),
     ).pipe(map((e) => e.value));
   }
+  notEqual(key: ROW[KEY]): Source<ROW> {
+    const left = this.lessThan(key);
+    const right = this.greaterThan(key);
+
+    return of(left, right).pipe(flat$());
+  }
   startWith(prefix: ROW[KEY]): Source<ROW> {
     const endPrefix =
       prefix.slice(0, -1) +
@@ -117,12 +131,12 @@ export class View<
       map((e) => e.value),
     );
   }
-  greatThan(key: ROW[KEY]): Source<ROW> {
+  greaterThan(key: ROW[KEY]): Source<ROW> {
     return fromIterable(this._db.getRange({ start: [key, "\xff"] })).pipe(
       map((e) => e.value),
     );
   }
-  greatThanOrEqual(key: ROW[KEY]): Source<ROW> {
+  greaterThanOrEqual(key: ROW[KEY]): Source<ROW> {
     return fromIterable(this._db.getRange({ start: key })).pipe(
       map((e) => e.value),
     );
@@ -145,6 +159,7 @@ export function defineView<
 export namespace View {
   export type Value<ID extends Key, VALUE> = { id: ID; map: VALUE };
   export type AnyView = View<any, any, any>;
+  export type StringOnly = string & Symbol;
   export type Init<
     TABLE extends Table.AnyTable,
     KEY extends keyof Table.InferRow<TABLE>,

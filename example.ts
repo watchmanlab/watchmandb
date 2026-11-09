@@ -28,7 +28,7 @@ const usersDef = defineTable({
 
 const env = open("test.mdb", {});
 const users = new Table({ ...usersDef, env, name: "users" });
-const byName = new View({ env, table: users, name: "byName", key: "name" });
+const byName = new View({ env, table: users, name: "byName", key: "age" });
 
 await env.transaction(() => {
   users.insert({ email: "bbb@g", name: "ambic", age: 42 });
@@ -38,13 +38,13 @@ await env.transaction(() => {
   users.insert({ email: "vvv@g", name: "amb", age: 22 });
 });
 
-for (const v of byName.equal("amb")) {
+for (const v of byName.notEqual(22)) {
   // console.log(v);
 }
 
 console.time("");
 
-for (const v of byName.equal("zreze")) {
+for (const v of byName.notEqual(22)) {
   console.log(v);
 }
 
