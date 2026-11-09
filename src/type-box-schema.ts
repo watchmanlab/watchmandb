@@ -4,10 +4,8 @@ import type { SchemaProvider } from "./schema-provider.js";
 import { Key } from "lmdb";
 
 export class TypBoxSchema<
-  SHAPE extends { readonly id: Type.TString | Type.TNumber },
-  OUT extends Type.Static<Type.TObject<SHAPE>> extends { id: Key }
-    ? Type.Static<Type.TObject<SHAPE>>
-    : Type.Static<Type.TObject<SHAPE>> & { id: Key },
+  SHAPE extends {},
+  OUT extends Type.Static<Type.TObject<SHAPE>>,
 > implements SchemaProvider<Type.TObject<SHAPE>, OUT> {
   schema: Type.TObject<SHAPE>;
   private validator: Schema.Validator;

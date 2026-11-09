@@ -1,6 +1,6 @@
 import { Table } from "./table";
 
-export interface SchemaProvider<SCHEMA, OUT extends Table.Row> {
+export interface SchemaProvider<SCHEMA, OUT extends Record<string, any>> {
   schema: SCHEMA;
   parse(data: unknown): Readonly<OUT>;
 }

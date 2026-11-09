@@ -29,9 +29,11 @@ export class View<
   }
   private _init() {
     const { table } = this.init;
-    if (table.isEmpty || !this._db.getRange()[Symbol.iterator]().next().done)
+    if (!table.length || !this._db.getRange()[Symbol.iterator]().next().done)
       return;
-    table.all().pipe(listen((row) => this._insert(row)));
+    this._db.transaction(() =>
+      table.all().pipe(listen((row) => this._insert(row))),
+    );
   }
   private _makeKey(row: ROW): [...KEY, ROW["id"]] {
     return [...this.init.keySelector(row), row.id] as [...KEY, ROW["id"]];

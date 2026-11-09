@@ -3,12 +3,8 @@ import type { SchemaProvider } from "./schema-provider.js";
 import { z } from "zod";
 
 export class ZodSchema<
-  SHAPE extends {
-    readonly id: z.ZodString | z.ZodNumber;
-  },
-  OUT extends z.output<z.ZodObject<SHAPE>> extends { id: Key }
-    ? z.output<z.ZodObject<SHAPE>>
-    : z.output<z.ZodObject<SHAPE>> & { id: Key },
+  SHAPE extends {},
+  OUT extends z.output<z.ZodObject<SHAPE>>,
 > implements SchemaProvider<z.ZodObject<SHAPE>, OUT> {
   schema: z.ZodObject<SHAPE, z.core.$strip>;
   constructor(shape: SHAPE) {
