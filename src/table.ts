@@ -12,9 +12,8 @@ import type { Database, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
 
 export class Table<
-  NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
-  PK extends [
+  PRIMARY_KEY extends [
     keyof SchemaProvider.InferOutput<SCHEMA>,
     ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
   ],
@@ -22,10 +21,10 @@ export class Table<
   ROW extends SchemaProvider.InferOutput<SCHEMA> =
     SchemaProvider.InferOutput<SCHEMA>,
 > {
-  private _name: NAME;
+  private _name: string;
   private _db: Database<Readonly<ROW>>;
   private _schema: SCHEMA;
-  private _pk: PK;
+  private _primaryKey: PRIMARY_KEY;
   private _length: number;
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
@@ -40,18 +39,22 @@ export class Table<
   private _$beforeDelete?: Stream<Readonly<ROW>>;
   private _$afterDelete?: Stream<Readonly<ROW>>;
 
-  constructor(init: Table.Init<NAME, SCHEMA, PK>) {
-    this._name = init.name;
-    this._db = init.env.openDB({
+  constructor(init: Table.Init<SCHEMA, PRIMARY_KEY>) {
+    const { name, env, schema, primaryKey } = init;
+    this._name = name;
+    this._db = env.openDB({
       name: this._name,
       sharedStructuresKey: Symbol.for(this._name),
     });
-    this._schema = init.schema;
-    this._pk = init.pk;
+    this._schema = schema;
+    this._primaryKey = primaryKey;
     this._length = 0;
   }
-  get name(): NAME {
+  get name(): string {
     return this._name;
+  }
+  get primaryKey(): PRIMARY_KEY {
+    return this._primaryKey;
   }
   get $beforeInsert(): Source<Readonly<ROW>> {
     return Source.from((this._$beforeInsert ??= new Stream()));
@@ -74,20 +77,12 @@ export class Table<
   get $afterDelete(): Source<Readonly<ROW>> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
-  get(
-    pk: Table.InferColumnsValue<PK, ROW>["length"] extends 1
-      ? Table.InferColumnsValue<PK, ROW>[0]
-      : Table.InferColumnsValue<PK, ROW>,
-  ) {
-    return this._db.get(Array.isArray(pk) ? pk : [pk]);
+  get(primaryKey: Table.InferColumnsValue<PRIMARY_KEY, ROW>) {
+    return this._db.get(Array.isArray(primaryKey) ? primaryKey : [primaryKey]);
   }
-  find() {
-    //
+  all(): Source<ROW> {
+    return fromIterable(this._db.getRange()).pipe(map((e) => e.value));
   }
-  all(limit?: number): Source<ROW> {
-    return fromIterable(this._db.getRange({ limit })).pipe(map((e) => e.value));
-  }
-
   get length() {
     return this._length;
   }
@@ -99,7 +94,9 @@ export class Table<
     }
   }
   update(
-    row: Partial<Omit<ROW, PK[number]>> & { [K in PK[number]]: ROW[K] },
+    row: Partial<Omit<ROW, PRIMARY_KEY[number]>> & {
+      [K in PRIMARY_KEY[number]]: ROW[K];
+    },
   ): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
       return this._update(row) as never;
@@ -114,11 +111,13 @@ export class Table<
       return this.insert(row) as never;
     }
   }
-  delete(pk: PK): TX extends true ? boolean : Promise<boolean> {
+  delete(
+    primaryKey: PRIMARY_KEY,
+  ): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
-      return this._delete(pk) as never;
+      return this._delete(primaryKey) as never;
     } else {
-      return this._db.transaction(() => this._delete(pk)) as never;
+      return this._db.transaction(() => this._delete(primaryKey)) as never;
     }
   }
   private _isInsideTransaction(): boolean {
@@ -129,7 +128,7 @@ export class Table<
     }
   }
   private _makeKey(row: ROW) {
-    return this._pk.map((k) => row[k]);
+    return this._primaryKey.map((k) => row[k]);
   }
   private _insert(row: ROW): boolean {
     const parsed = this._schema.parse(row);
@@ -149,7 +148,9 @@ export class Table<
     return true;
   }
   private _update(
-    row: Partial<Omit<ROW, PK[number]>> & { [K in PK[number]]: ROW[K] },
+    row: Partial<Omit<ROW, PRIMARY_KEY[number]>> & {
+      [K in PRIMARY_KEY[number]]: ROW[K];
+    },
   ): boolean {
     const key = this._makeKey(row);
 
@@ -167,8 +168,8 @@ export class Table<
 
     return true;
   }
-  private _delete(pk: PK): boolean {
-    const oldRow = this._db.get(pk);
+  private _delete(primaryKey: PRIMARY_KEY): boolean {
+    const oldRow = this._db.get(primaryKey);
     if (!oldRow) return false;
 
     this._$beforeDelete?.push(oldRow);
@@ -182,62 +183,57 @@ export class Table<
   }
   clear(): Terminate<Source<TerminateReason>> {
     return fromIterable(this._db.getKeys())
-      .pipe(listen((key: PK) => this.delete(key)))
+      .pipe(listen((key: PRIMARY_KEY) => this.delete(key)))
       .pipe(terminate());
   }
 }
 
 export function defineTable<
-  NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
-  PK extends [
+  PRIMARY_KEY extends [
     keyof SchemaProvider.InferOutput<SCHEMA>,
     ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
   ],
 >(
-  config: Table.Definition<NAME, SCHEMA, PK>,
-): Table.Definition<NAME, SCHEMA, PK> {
+  config: Table.Definition<SCHEMA, PRIMARY_KEY>,
+): Table.Definition<SCHEMA, PRIMARY_KEY> {
   return config;
 }
 
 export namespace Table {
-  export type AnyTable = Table<any, any, any, any, any>;
-  export type AnyDefinition = Definition<any, any, any>;
+  export type AnyTable = Table<any, [any, ...any[]], any, any>;
+  export type AnyDefinition = Definition<any, [any, ...any[]]>;
   export type Row = Record<string, any> & { id: Key };
   export type InferRow<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, any, any, infer R> ? R : never;
-  export type InferName<TABLE extends AnyTable> =
-    TABLE extends Table<infer N, any, any, any, any> ? N : never;
-  export type InferPrimaryID<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, infer P, any, any> ? P : never;
-  export type InferTable<DEF extends Definition<any, any, any>> =
-    DEF extends Definition<infer NAME, infer SCHEMA, infer PK>
-      ? Table<NAME, SCHEMA, PK>
+    TABLE extends Table<any, any, any, infer R> ? R : never;
+  export type InferPrimaryKey<TABLE extends AnyTable> =
+    TABLE extends Table<any, infer P, any, any> ? P : never;
+  export type InferTable<DEF extends AnyDefinition> =
+    DEF extends Definition<infer SCHEMA, infer PRIMARY_KEY>
+      ? Table<SCHEMA, PRIMARY_KEY>
       : never;
   export type InferColumnsValue<COLS extends any[], ROW> = {
     [K in keyof COLS]: COLS[K] extends keyof ROW ? ROW[COLS[K]] : never;
   };
 
   export type Init<
-    NAME extends string,
     SCHEMA extends SchemaProvider.AnySchemaProvider,
-    PK extends [
+    PRIMARY_KEY extends [
       keyof SchemaProvider.InferOutput<SCHEMA>,
       ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
     ],
   > = {
-    name: NAME;
+    name: string;
     env: RootDatabase;
     schema: SCHEMA;
-    pk: PK;
+    primaryKey: PRIMARY_KEY;
   };
 
   export type Definition<
-    NAME extends string,
     SCHEMA extends SchemaProvider.AnySchemaProvider,
-    PK extends [
+    PRIMARY_KEY extends [
       keyof SchemaProvider.InferOutput<SCHEMA>,
       ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
     ],
-  > = Omit<Init<NAME, SCHEMA, PK>, "env">;
+  > = Omit<Init<SCHEMA, PRIMARY_KEY>, "env" | "name">;
 }

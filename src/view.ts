@@ -4,19 +4,23 @@ import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
 
 export class View<
-  NAME extends string,
   TABLE extends Table.AnyTable,
-  const KEY extends [Key, ...Key[]],
-  const VALUE,
+  KEY extends keyof Table.InferRow<TABLE>,
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
 > {
-  private _name: NAME;
-  protected _db: Database<VALUE, Key[]>;
+  private _name: string;
+  private _db: Database;
+  private _table: TABLE;
+  private _key: KEY;
+  private _unique?: boolean;
+  constructor(init: View.Init<TABLE, KEY>) {
+    const { name, env, table, key, unique } = init;
 
-  constructor(protected init: View.Init<NAME, TABLE, KEY, VALUE, ROW>) {
-    const { name, env, table } = init;
-    this._name = name;
-    this._db = env.openDB({ name: `view:${table.name}:${name}` });
+    this._name = `${table.name}:${name}`;
+    this._db = env.openDB({ name: this._name });
+    this._table = table;
+    this._key = key;
+    this._unique = unique;
     this._init();
     table.$beforeInsert.pipe(listen((newRow) => this._insert(newRow)));
     table.$beforeUpdate.pipe(
@@ -24,121 +28,129 @@ export class View<
     );
     table.$beforeDelete.pipe(listen((oldRow) => this._delete(oldRow)));
   }
-  get name(): NAME {
+  get name(): string {
     return this._name;
   }
+
   private _init() {
-    const { table } = this.init;
-    if (!table.length || !this._db.getRange()[Symbol.iterator]().next().done)
+    const { _table } = this;
+    if (!_table.length || !this._db.getRange()[Symbol.iterator]().next().done)
       return;
     this._db.transaction(() =>
-      table.all().pipe(listen((row) => this._insert(row))),
+      _table.all().pipe(listen((row) => this._insert(row))),
     );
   }
-  private _makeKey(row: ROW): [...KEY, ROW["id"]] {
-    return [...this.init.keySelector(row), row.id] as [...KEY, ROW["id"]];
+
+  private _makeKey(row: ROW): [KEY, Table.InferPrimaryKey<TABLE>] {
+    return [
+      row[this._key],
+      this._table.primaryKey.map((k) => row[k]) as Table.InferPrimaryKey<TABLE>,
+    ];
   }
   private _insert(newRow: ROW) {
-    const { onConflict, map } = this.init;
-    const key = this._makeKey(newRow);
+    const { _unique, _name } = this;
+    const newKey = this._makeKey(newRow);
 
-    if (onConflict) {
-      const rawKeys = key.toSpliced(-1);
-      this.equal(...(rawKeys as never)).pipe(
-        listen((oldRow) => {
-          onConflict!(rawKeys as never, newRow, oldRow);
+    if (_unique) {
+      const rawKey = newKey.toSpliced(-1)[0]!;
+      fromIterable(
+        this._db.getRange({
+          start: [rawKey],
+          end: [rawKey, "\xff"],
         }),
-      );
+      )
+        .consume((self) => {
+          self.terminate("abort");
+          throw new Error(`duplicate key ${String(rawKey)} at ${_name}`);
+        })
+        .next();
     }
 
-    this._db.put(key, map(newRow));
+    this._db.put(newKey, newRow);
   }
   private _update(newRow: ROW, oldRow: ROW) {
-    const { onConflict, map } = this.init;
-    const oldKeys = this._makeKey(oldRow);
-    const newKeys = this._makeKey(newRow);
+    const { _unique, _name } = this;
+    const oldKey = this._makeKey(oldRow);
+    const newKey = this._makeKey(newRow);
 
-    if (isDeepEqual(oldKeys, newKeys)) return;
+    if (isDeepEqual(oldKey, newKey)) return;
 
-    if (onConflict) {
-      const rawKeys = newKeys.toSpliced(-1) as KEY;
+    if (_unique) {
+      const rawKey = newKey.toSpliced(-1)[0]!;
 
       fromIterable(
         this._db.getRange({
-          start: rawKeys,
-          end: [...rawKeys, "\xff"],
+          start: [rawKey],
+          end: [rawKey, "\xff"],
         }),
-      ).pipe(
-        listen(({ key, value }) => {
-          if ((key as Array<any>).pop() === newRow.id) {
-            onConflict(rawKeys, newRow, value);
+      )
+        .consume((self, { key }) => {
+          if ((key as Array<any>).pop() !== newKey.splice(-1)) {
+            self.terminate("abort");
+            throw new Error(`duplicate key ${String(rawKey)} at ${_name}`);
           }
-        }),
-      );
+          self.next();
+        })
+        .next();
     }
 
-    this._db.remove(oldKeys);
-    this._db.put(newKeys, map(newRow));
+    this._db.remove(oldKey);
+    this._db.put(newKey, newRow);
   }
   private _delete(oldRow: ROW) {
     this._db.remove(this._makeKey(oldRow));
   }
-  // select<>(){
-
-  // }
-  has(...keys: Partial<KEY>): boolean {
-    for (const v of this.equal(...keys)) return true;
+  has(key: KEY): boolean {
+    for (const v of this.equal(key)) return true;
     return false;
   }
-  get(...keys: Partial<KEY>): VALUE | undefined {
-    for (const v of this.equal(...keys)) return v;
+  get(key: KEY): ROW | undefined {
+    for (const v of this.equal(key)) return v;
     return;
   }
-  all(): Source<VALUE> {
+  all(): Source<ROW> {
     return fromIterable(this._db.getRange({})).pipe(map((e) => e.value));
   }
-  startWith(...keys: Partial<KEY>): Source<VALUE> {
+  startWith(key: KEY): Source<ROW> {
     return fromIterable(
       this._db.getRange({
-        start: keys as never,
-      }),
-    )
-      .pipe(filter((e) => e.key.toString().startsWith(keys.toString())))
-      .pipe(map((e) => e.value));
-  }
-  equal(...keys: Partial<KEY>): Source<VALUE> {
-    return fromIterable(
-      this._db.getRange({
-        start: keys as never,
-        end: [...keys, "\xff"] as never,
+        start: key,
       }),
     ).pipe(map((e) => e.value));
   }
-  lessThan(...keys: Partial<KEY>): Source<VALUE> {
-    return fromIterable(this._db.getRange({ end: keys as never })).pipe(
-      map((e) => e.value),
-    );
-  }
-  lessThanOrEqual(...keys: Partial<KEY>): Source<VALUE> {
-    return fromIterable(
-      this._db.getRange({ end: [...keys, "\xff"] as never }),
-    ).pipe(map((e) => e.value));
-  }
-  greatThan(...keys: Partial<KEY>): Source<VALUE> {
-    return fromIterable(
-      this._db.getRange({ start: [...keys, "\xff"] as never }),
-    ).pipe(map((e) => e.value));
-  }
-  greatThanOrEqual(...keys: Partial<KEY>): Source<VALUE> {
-    return fromIterable(this._db.getRange({ start: keys as never })).pipe(
-      map((e) => e.value),
-    );
-  }
-  between(start: Partial<KEY>, end: Partial<KEY>): Source<VALUE> {
+  equal(key: KEY): Source<ROW> {
     return fromIterable(
       this._db.getRange({
-        start: start as never,
-        end: [...end, "\xff"] as never,
+        start: [key],
+        end: [key, "\xff"],
+      }),
+    ).pipe(map((e) => e.value));
+  }
+  lessThan(key: KEY): Source<ROW> {
+    return fromIterable(this._db.getRange({ end: key })).pipe(
+      map((e) => e.value),
+    );
+  }
+  lessThanOrEqual(key: KEY): Source<ROW> {
+    return fromIterable(this._db.getRange({ end: [key, "\xff"] })).pipe(
+      map((e) => e.value),
+    );
+  }
+  greatThan(key: KEY): Source<ROW> {
+    return fromIterable(this._db.getRange({ start: [key, "\xff"] })).pipe(
+      map((e) => e.value),
+    );
+  }
+  greatThanOrEqual(key: KEY): Source<ROW> {
+    return fromIterable(this._db.getRange({ start: key })).pipe(
+      map((e) => e.value),
+    );
+  }
+  between(start: KEY, end: KEY): Source<ROW> {
+    return fromIterable(
+      this._db.getRange({
+        start: [start],
+        end: [end, "\xff"],
       }),
     ).pipe(map((e) => e.value));
   }
@@ -146,58 +158,27 @@ export class View<
 }
 
 export function defineView<
-  NAME extends string,
   TABLE_DEF extends Table.AnyDefinition,
-  KEY extends [Key, ...Key[]],
-  VALUE,
->(config: {
-  name: NAME;
-  tableDefinition: TABLE_DEF;
-  keySelector: (row: Table.InferRow<Table.InferTable<TABLE_DEF>>) => KEY;
-  map: (row: Table.InferRow<Table.InferTable<TABLE_DEF>>) => VALUE;
-  onConflict?: (
-    key: KEY,
-    row: Table.InferRow<Table.InferTable<TABLE_DEF>>,
-    value: VALUE,
-  ) => VALUE;
-}): View.Definition<NAME, TABLE_DEF, KEY, VALUE> {
-  const { name, tableDefinition, keySelector, map, onConflict } = config;
-  return {
-    name,
-    tableDefinition,
-    init: (env: RootDatabase, table: Table.InferTable<TABLE_DEF>) =>
-      new View({ name, env, table, keySelector, map, onConflict }),
-  };
+  KEY extends keyof Table.InferRow<Table.InferTable<TABLE_DEF>>,
+>(config: View.Definition<TABLE_DEF, KEY>): View.Definition<TABLE_DEF, KEY> {
+  return config;
 }
 
 export namespace View {
   export type Value<ID extends Key, VALUE> = { id: ID; map: VALUE };
-  export type AnyView = View<any, any, any, any, any>;
+  export type AnyView = View<any, any, any>;
   export type Init<
-    NAME extends string,
     TABLE extends Table.AnyTable,
-    KEY extends [Key, ...Key[]],
-    VALUE,
-    ROW extends Table.InferRow<TABLE>,
+    KEY extends keyof Table.InferRow<TABLE>,
   > = {
-    name: NAME;
+    name: string;
     env: RootDatabase;
     table: TABLE;
-    keySelector: (row: ROW) => KEY;
-    map: (row: ROW) => VALUE;
-    onConflict?: (key: KEY, row: ROW, value: VALUE) => VALUE;
+    key: KEY;
+    unique?: boolean;
   };
-  export interface Definition<
-    NAME extends string,
+  export type Definition<
     TABLE_DEF extends Table.AnyDefinition,
-    KEY extends [Key, ...Key[]],
-    VALUE,
-  > {
-    name: NAME;
-    tableDefinition: TABLE_DEF;
-    init: (
-      env: RootDatabase,
-      table: Table.InferTable<TABLE_DEF>,
-    ) => View<NAME, Table.InferTable<TABLE_DEF>, KEY, VALUE>;
-  }
+    KEY extends keyof Table.InferRow<Table.InferTable<TABLE_DEF>>,
+  > = Omit<Init<Table.InferTable<TABLE_DEF>, KEY>, "env" | "table">;
 }

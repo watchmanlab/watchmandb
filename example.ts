@@ -4,7 +4,6 @@ import { ZodSchema } from "./src/zod-schema";
 import {} from "bun";
 import { open } from "lmdb";
 import { defineView } from "./src/view";
-import { defineIndex } from "./src/index";
 import { map } from "@watchmanlab/stream";
 
 try {
@@ -13,13 +12,12 @@ try {
 } catch (error) {}
 
 const usersDef = defineTable({
-  name: "users",
   schema: new ZodSchema({
     email: z.string(),
     name: z.string(),
     age: z.number(),
   }),
-  pk: ["email"],
+  primaryKey: ["email"],
 });
 
 // const byNameDef = defineIndex({
@@ -29,7 +27,7 @@ const usersDef = defineTable({
 // });
 
 const env = open("test.mdb", {});
-const users = new Table({ ...usersDef, env });
+const users = new Table({ ...usersDef, env, name: "users" });
 // const byName = byNameDef.init(env, users);
 
 await users.insert({ email: "bbb@g", name: "ambic", age: 42 });
@@ -40,6 +38,6 @@ await users.insert({ email: "vvv@g", name: "amb", age: 22 });
 
 console.time("");
 
-console.log(users.get(""));
+console.log(users.get(["dd"]));
 
 console.timeEnd("");
