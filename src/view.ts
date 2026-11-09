@@ -53,12 +53,8 @@ export class View<
 
     if (_unique) {
       const rawKey = newKey.toSpliced(-1)[0]!;
-      fromIterable(
-        this._db.getRange({
-          start: [rawKey],
-          end: [rawKey, "\xff"],
-        }),
-      )
+
+      this.equal(rawKey as KEY)
         .consume((self) => {
           self.terminate("abort");
           throw new Error(`duplicate key ${String(rawKey)} at ${_name}`);
@@ -70,6 +66,7 @@ export class View<
   }
   private _update(newRow: ROW, oldRow: ROW) {
     const { _unique, _name } = this;
+
     const oldKey = this._makeKey(oldRow);
     const newKey = this._makeKey(newRow);
 
@@ -78,14 +75,9 @@ export class View<
     if (_unique) {
       const rawKey = newKey.toSpliced(-1)[0]!;
 
-      fromIterable(
-        this._db.getRange({
-          start: [rawKey],
-          end: [rawKey, "\xff"],
-        }),
-      )
+      this.equal(rawKey as KEY)
         .consume((self, { key }) => {
-          if ((key as Array<any>).pop() !== newKey.splice(-1)) {
+          if ((key as Array<any>).pop() !== newKey[newKey.length - 1]) {
             self.terminate("abort");
             throw new Error(`duplicate key ${String(rawKey)} at ${_name}`);
           }
@@ -100,32 +92,17 @@ export class View<
   private _delete(oldRow: ROW) {
     this._db.remove(this._makeKey(oldRow));
   }
-  has(key: KEY): boolean {
-    for (const v of this.equal(key)) return true;
-    return false;
-  }
-  get(key: KEY): ROW | undefined {
-    for (const v of this.equal(key)) return v;
-    return;
-  }
-  all(): Source<ROW> {
-    return fromIterable(this._db.getRange({})).pipe(map((e) => e.value));
-  }
-  startWith(key: KEY): Source<ROW> {
-    return fromIterable(
-      this._db.getRange({
-        start: key,
-      }),
-    ).pipe(map((e) => e.value));
-  }
   equal(key: KEY): Source<ROW> {
     return fromIterable(
-      this._db.getRange({
-        start: [key],
-        end: [key, "\xff"],
-      }),
+      this._db.getRange({ start: [key], end: [key, "\xff"] }),
     ).pipe(map((e) => e.value));
   }
+  startWith(key: KEY): Source<ROW> {
+    return fromIterable(this._db.getRange({ start: key })).pipe(
+      map((e) => e.value),
+    );
+  }
+
   lessThan(key: KEY): Source<ROW> {
     return fromIterable(this._db.getRange({ end: key })).pipe(
       map((e) => e.value),
@@ -148,10 +125,7 @@ export class View<
   }
   between(start: KEY, end: KEY): Source<ROW> {
     return fromIterable(
-      this._db.getRange({
-        start: [start],
-        end: [end, "\xff"],
-      }),
+      this._db.getRange({ start: [start], end: [end, "\xff"] }),
     ).pipe(map((e) => e.value));
   }
   intersect() {}
