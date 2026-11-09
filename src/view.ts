@@ -92,38 +92,42 @@ export class View<
   private _delete(oldRow: ROW) {
     this._db.remove(this._makeKey(oldRow));
   }
-  equal(key: KEY): Source<ROW> {
+  equal(key: ROW[KEY]): Source<ROW> {
     return fromIterable(
       this._db.getRange({ start: [key], end: [key, "\xff"] }),
     ).pipe(map((e) => e.value));
   }
-  startWith(key: KEY): Source<ROW> {
-    return fromIterable(this._db.getRange({ start: key })).pipe(
-      map((e) => e.value),
-    );
+  startWith(prefix: ROW[KEY]): Source<ROW> {
+    const endPrefix =
+      prefix.slice(0, -1) +
+      String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+
+    return fromIterable(
+      this._db.getRange({ start: prefix, end: endPrefix }),
+    ).pipe(map((e) => e.value));
   }
 
-  lessThan(key: KEY): Source<ROW> {
+  lessThan(key: ROW[KEY]): Source<ROW> {
     return fromIterable(this._db.getRange({ end: key })).pipe(
       map((e) => e.value),
     );
   }
-  lessThanOrEqual(key: KEY): Source<ROW> {
+  lessThanOrEqual(key: ROW[KEY]): Source<ROW> {
     return fromIterable(this._db.getRange({ end: [key, "\xff"] })).pipe(
       map((e) => e.value),
     );
   }
-  greatThan(key: KEY): Source<ROW> {
+  greatThan(key: ROW[KEY]): Source<ROW> {
     return fromIterable(this._db.getRange({ start: [key, "\xff"] })).pipe(
       map((e) => e.value),
     );
   }
-  greatThanOrEqual(key: KEY): Source<ROW> {
+  greatThanOrEqual(key: ROW[KEY]): Source<ROW> {
     return fromIterable(this._db.getRange({ start: key })).pipe(
       map((e) => e.value),
     );
   }
-  between(start: KEY, end: KEY): Source<ROW> {
+  between(start: ROW[KEY], end: ROW[KEY]): Source<ROW> {
     return fromIterable(
       this._db.getRange({ start: [start], end: [end, "\xff"] }),
     ).pipe(map((e) => e.value));
@@ -154,5 +158,7 @@ export namespace View {
   export type Definition<
     TABLE_DEF extends Table.AnyDefinition,
     KEY extends keyof Table.InferRow<Table.InferTable<TABLE_DEF>>,
-  > = Omit<Init<Table.InferTable<TABLE_DEF>, KEY>, "env" | "table">;
+  > = Omit<Init<Table.InferTable<TABLE_DEF>, KEY>, "env" | "table"> & {
+    tableDefinition: TABLE_DEF;
+  };
 }

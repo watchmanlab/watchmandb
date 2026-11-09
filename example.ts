@@ -3,7 +3,7 @@ import { defineTable, Table } from "./src/table";
 import { ZodSchema } from "./src/zod-schema";
 import {} from "bun";
 import { open } from "lmdb";
-import { defineView } from "./src/view";
+import { defineView, View } from "./src/view";
 import { map } from "@watchmanlab/stream";
 
 try {
@@ -20,24 +20,32 @@ const usersDef = defineTable({
   primaryKey: ["email"],
 });
 
-// const byNameDef = defineIndex({
+// const byNameDef = defineView({
 //   name: "byName",
 //   tableDefinition: usersDef,
-//   key: ["name"],
+//   key: "name",
 // });
 
 const env = open("test.mdb", {});
 const users = new Table({ ...usersDef, env, name: "users" });
-// const byName = byNameDef.init(env, users);
+const byName = new View({ env, table: users, name: "byName", key: "name" });
 
-await users.insert({ email: "bbb@g", name: "ambic", age: 42 });
-await users.insert({ email: "aaa@g", name: "sofiane", age: 42 });
-await users.insert({ email: "ddd@g", name: "soffinal", age: 40 });
-await users.insert({ email: "eee@g", name: "zrezem", age: 22 });
-await users.insert({ email: "vvv@g", name: "amb", age: 22 });
+await env.transaction(() => {
+  users.insert({ email: "bbb@g", name: "ambic", age: 42 });
+  users.insert({ email: "aaa@g", name: "sofiane", age: 42 });
+  users.insert({ email: "ddd@g", name: "soffinal", age: 40 });
+  users.insert({ email: "eee@g", name: "zrezem", age: 22 });
+  users.insert({ email: "vvv@g", name: "amb", age: 22 });
+});
+
+for (const v of byName.equal("amb")) {
+  // console.log(v);
+}
 
 console.time("");
 
-console.log(users.get(["dd"]));
+for (const v of byName.equal("zreze")) {
+  console.log(v);
+}
 
 console.timeEnd("");
