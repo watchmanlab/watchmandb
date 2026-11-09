@@ -10,12 +10,14 @@ import {
 } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
 import type { SchemaProvider } from "./schema-provider";
-import { isDeepEqual } from "./utils";
 
 export class Table<
   NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
-  PK extends (keyof SchemaProvider.InferOutput<SCHEMA>)[],
+  PK extends [
+    keyof SchemaProvider.InferOutput<SCHEMA>,
+    ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
+  ],
   TX extends boolean = false,
   ROW extends SchemaProvider.InferOutput<SCHEMA> =
     SchemaProvider.InferOutput<SCHEMA>,
@@ -72,10 +74,16 @@ export class Table<
   get $afterDelete(): Source<Readonly<ROW>> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
-  get(pk: Table.InferColumnValue<PK, ROW>) {
+  get(
+    pk: Table.InferColumnsValue<PK, ROW>["length"] extends 1
+      ? Table.InferColumnsValue<PK, ROW>[0]
+      : Table.InferColumnsValue<PK, ROW>,
+  ) {
     return this._db.get(Array.isArray(pk) ? pk : [pk]);
   }
-
+  find() {
+    //
+  }
   all(limit?: number): Source<ROW> {
     return fromIterable(this._db.getRange({ limit })).pipe(map((e) => e.value));
   }
@@ -182,7 +190,10 @@ export class Table<
 export function defineTable<
   NAME extends string,
   SCHEMA extends SchemaProvider.AnySchemaProvider,
-  PK extends (keyof SchemaProvider.InferOutput<SCHEMA>)[],
+  PK extends [
+    keyof SchemaProvider.InferOutput<SCHEMA>,
+    ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
+  ],
 >(
   config: Table.Definition<NAME, SCHEMA, PK>,
 ): Table.Definition<NAME, SCHEMA, PK> {
@@ -203,14 +214,17 @@ export namespace Table {
     DEF extends Definition<infer NAME, infer SCHEMA, infer PK>
       ? Table<NAME, SCHEMA, PK>
       : never;
-  export type InferColumnValue<COL, ROW> = COL extends [keyof ROW]
-    ? ROW[COL[0]]
-    : { [K in keyof COL]: COL[K] extends keyof ROW ? ROW[COL[K]] : never };
+  export type InferColumnsValue<COLS extends any[], ROW> = {
+    [K in keyof COLS]: COLS[K] extends keyof ROW ? ROW[COLS[K]] : never;
+  };
 
   export type Init<
     NAME extends string,
     SCHEMA extends SchemaProvider.AnySchemaProvider,
-    PK extends (keyof SchemaProvider.InferOutput<SCHEMA>)[],
+    PK extends [
+      keyof SchemaProvider.InferOutput<SCHEMA>,
+      ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
+    ],
   > = {
     name: NAME;
     env: RootDatabase;
@@ -221,6 +235,9 @@ export namespace Table {
   export type Definition<
     NAME extends string,
     SCHEMA extends SchemaProvider.AnySchemaProvider,
-    PK extends (keyof SchemaProvider.InferOutput<SCHEMA>)[],
+    PK extends [
+      keyof SchemaProvider.InferOutput<SCHEMA>,
+      ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
+    ],
   > = Omit<Init<NAME, SCHEMA, PK>, "env">;
 }

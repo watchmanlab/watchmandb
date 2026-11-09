@@ -19,7 +19,7 @@ const usersDef = defineTable({
     name: z.string(),
     age: z.number(),
   }),
-  pk: ["email", "name"],
+  pk: ["email"],
 });
 
 // const byNameDef = defineIndex({
@@ -40,6 +40,6 @@ await users.insert({ email: "vvv@g", name: "amb", age: 22 });
 
 console.time("");
 
-console.log(users.get(["bbb@g"]));
+console.log(users.get(""));
 
 console.timeEnd("");
