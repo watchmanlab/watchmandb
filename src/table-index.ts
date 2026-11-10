@@ -124,7 +124,6 @@ export class Index<
       this._db.getRange({ start: prefix, end: endPrefix }),
     ).pipe(map((e) => e.value));
   }
-
   lessThan(key: ROW[KEY]): Source<ROW> {
     return fromIterable(this._db.getRange({ end: key })).pipe(
       map((e) => e.value),

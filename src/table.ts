@@ -20,7 +20,7 @@ export class Table<
   TX extends boolean = false,
   ROW extends SchemaProvider.InferOutput<SCHEMA> =
     SchemaProvider.InferOutput<SCHEMA>,
-> {
+> implements Iterable<ROW> {
   private _name: string;
   private _db: Database<Readonly<ROW>>;
   private _schema: SCHEMA;
@@ -50,6 +50,9 @@ export class Table<
     this._primaryKey = primaryKey;
     this._length = 0;
   }
+  [Symbol.iterator]() {
+    return this.all()[Symbol.iterator]();
+  }
   get name(): string {
     return this._name;
   }
@@ -76,6 +79,11 @@ export class Table<
   }
   get $afterDelete(): Source<Readonly<ROW>> {
     return Source.from((this._$afterDelete ??= new Stream()));
+  }
+  query() {
+    return {
+      execute: () => {},
+    };
   }
   get(primaryKey: Table.InferColumnsValue<PRIMARY_KEY, ROW>) {
     return this._db.get(Array.isArray(primaryKey) ? primaryKey : [primaryKey]);
