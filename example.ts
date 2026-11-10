@@ -3,8 +3,7 @@ import { defineTable, Table } from "./src/table";
 import { ZodSchema } from "./src/zod-schema";
 import {} from "bun";
 import { open } from "lmdb";
-import { defineView, View } from "./src/view";
-import { map } from "@watchmanlab/stream";
+import { Index } from "./src/table-index";
 
 try {
   await Bun.file("test.mdb").unlink();
@@ -28,7 +27,7 @@ const usersDef = defineTable({
 
 const env = open("test.mdb", {});
 const users = new Table({ ...usersDef, env, name: "users" });
-const byName = new View({ env, table: users, name: "byName", key: "age" });
+const byName = new Index({ env, table: users, name: "byName", key: "age" });
 
 await env.transaction(() => {
   users.insert({ email: "bbb@g", name: "ambic", age: 42 });

@@ -1,23 +1,16 @@
 import {
-  filter,
-  flat,
   flat$,
-  fromFunction,
   fromIterable,
   listen,
   map,
-  merge,
   of,
-  scope,
-  Signal,
   Source,
-  tap,
 } from "@watchmanlab/stream";
 import { Table } from "./table";
 import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
 
-export class View<
+export class Index<
   TABLE extends Table.AnyTable,
   KEY extends keyof Table.InferRow<TABLE>,
   ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
@@ -27,7 +20,7 @@ export class View<
   private _table: TABLE;
   private _key: KEY;
   private _unique?: boolean;
-  constructor(init: View.Init<TABLE, KEY>) {
+  constructor(init: Index.Init<TABLE, KEY>) {
     const { name, env, table, key, unique } = init;
 
     this._name = `${table.name}:${name}`;
@@ -160,17 +153,15 @@ export class View<
   intersect() {}
 }
 
-export function defineView<
+export function defineIndex<
   TABLE_DEF extends Table.AnyDefinition,
   KEY extends keyof Table.InferRow<Table.InferTable<TABLE_DEF>>,
->(config: View.Definition<TABLE_DEF, KEY>): View.Definition<TABLE_DEF, KEY> {
+>(config: Index.Definition<TABLE_DEF, KEY>): Index.Definition<TABLE_DEF, KEY> {
   return config;
 }
 
-export namespace View {
-  export type Value<ID extends Key, VALUE> = { id: ID; map: VALUE };
-  export type AnyView = View<any, any, any>;
-  export type StringOnly = string & Symbol;
+export namespace Index {
+  export type AnyIndex = Index<any, any, any>;
   export type Init<
     TABLE extends Table.AnyTable,
     KEY extends keyof Table.InferRow<TABLE>,

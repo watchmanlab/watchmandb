@@ -1,7 +1,7 @@
 import { open, RootDatabase, RootDatabaseOptions } from "lmdb";
 import { Table } from "./table";
 
-import { View } from "./view";
+import { Index } from "./table-index";
 
 export type Config = {
   path: string;
