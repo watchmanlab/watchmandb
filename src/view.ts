@@ -1,11 +1,17 @@
 import {
   filter,
+  flat,
   flat$,
+  fromFunction,
   fromIterable,
   listen,
   map,
+  merge,
   of,
+  scope,
+  Signal,
   Source,
+  tap,
 } from "@watchmanlab/stream";
 import { Table } from "./table";
 import { Database, Key, RootDatabase } from "lmdb";
@@ -110,6 +116,11 @@ export class View<
     const right = this.greaterThan(key);
 
     return of(left, right).pipe(flat$());
+  }
+  in(keys: [ROW[KEY], ROW[KEY], ...ROW[KEY][]]): Source<ROW> {
+    return fromIterable(keys)
+      .pipe(map((key) => this.equal(key)))
+      .pipe(flat$());
   }
   startWith(prefix: ROW[KEY]): Source<ROW> {
     const endPrefix =

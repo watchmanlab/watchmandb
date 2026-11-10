@@ -38,13 +38,13 @@ await env.transaction(() => {
   users.insert({ email: "vvv@g", name: "amb", age: 22 });
 });
 
-for (const v of byName.notEqual(22)) {
+for (const v of byName.in([22, 40])) {
   // console.log(v);
 }
 
 console.time("");
 
-for (const v of byName.notEqual(22)) {
+for (const v of byName.in([22, 40])) {
   console.log(v);
 }
 
