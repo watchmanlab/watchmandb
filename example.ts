@@ -4,6 +4,7 @@ import { ZodSchema } from "./src/zod-schema";
 import {} from "bun";
 import { open } from "lmdb";
 import { Index } from "./src/table-index";
+import { map } from "@watchmanlab/stream";
 
 try {
   await Bun.file("test.mdb").unlink();
@@ -27,7 +28,7 @@ const usersDef = defineTable({
 
 const env = open("test.mdb", {});
 const users = new Table({ ...usersDef, env, name: "users" });
-const byName = new Index({ env, table: users, name: "byName", key: "age" });
+const byAge = new Index({ env, table: users, name: "byAge", key: "age" });
 
 await env.transaction(() => {
   users.insert({ email: "bbb@g", name: "ambic", age: 42 });
@@ -37,13 +38,12 @@ await env.transaction(() => {
   users.insert({ email: "vvv@g", name: "amb", age: 22 });
 });
 
-for (const v of byName.in([22, 40])) {
-  // console.log(v);
+for (const v of byAge.equal(22).pipe(map(users.get.bind(users)))) {
 }
 
 console.time("");
 
-for (const v of byName.in([22, 40])) {
+for (const v of byAge.equal(22).pipe(map(users.get.bind(users)))) {
   console.log(v);
 }
 
