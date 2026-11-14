@@ -9,6 +9,7 @@ import {
   TerminateReason,
 } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
+import { SystemTable } from "./system-table";
 
 export class Table<
   ROW extends Record<string, any>,
@@ -16,9 +17,9 @@ export class Table<
   TX extends boolean = false,
 > implements Iterable<ROW> {
   private _name: string;
+  private _env: RootDatabase;
   private _db: Database<Readonly<ROW>>;
   private _keySelector: (value: ROW) => KEY;
-  private _length: number;
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
   private _$beforeUpdate?: Stream<{
@@ -35,12 +36,14 @@ export class Table<
   constructor(init: Table.Init<ROW, KEY>) {
     const { name, env, keySelector } = init;
     this._name = name;
+    this._env = env;
     this._db = env.openDB({
       name: this._name,
       sharedStructuresKey: Symbol.for(this._name),
     });
     this._keySelector = keySelector;
-    this._length = 0;
+
+    SystemTable.getInstance(env).register(this);
   }
   [Symbol.iterator]() {
     return this.all()[Symbol.iterator]();
@@ -48,7 +51,9 @@ export class Table<
   get name(): string {
     return this._name;
   }
-
+  get stats(): SystemTable.Stats {
+    return SystemTable.getInstance(this._env).getStats(this);
+  }
   get $beforeInsert(): Source<Readonly<ROW>> {
     return Source.from((this._$beforeInsert ??= new Stream()));
   }
@@ -71,15 +76,13 @@ export class Table<
     return Source.from((this._$afterDelete ??= new Stream()));
   }
 
-  get(primaryKey: KEY) {
-    return this._db.get(primaryKey);
+  get(key: KEY) {
+    return this._db.get(key);
   }
   all(): Source<ROW> {
     return fromIterable(this._db.getRange()).pipe(map((e) => e.value));
   }
-  get length() {
-    return this._length;
-  }
+
   insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
       return this._insert(row) as never;
@@ -101,11 +104,11 @@ export class Table<
       return this.insert(row) as never;
     }
   }
-  delete(primaryKey: KEY): TX extends true ? boolean : Promise<boolean> {
+  delete(key: KEY): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
-      return this._delete(primaryKey) as never;
+      return this._delete(key) as never;
     } else {
-      return this._db.transaction(() => this._delete(primaryKey)) as never;
+      return this._db.transaction(() => this._delete(key)) as never;
     }
   }
   private _isInsideTransaction(): boolean {
@@ -125,7 +128,6 @@ export class Table<
 
     this._db.put(key, row).then((r) => {
       if (!r) return;
-      this._length++;
       this._$afterInsert?.push(row);
     });
 
@@ -146,15 +148,14 @@ export class Table<
 
     return true;
   }
-  private _delete(primaryKey: KEY): boolean {
-    const prev = this._db.get(primaryKey);
+  private _delete(key: KEY): boolean {
+    const prev = this._db.get(key);
     if (!prev) return false;
 
     this._$beforeDelete?.push(prev);
 
-    this._db.remove(primaryKey).then((r) => {
+    this._db.remove(key).then((r) => {
       if (!r) return;
-      this._length--;
       this._$afterDelete?.push(prev);
     });
     return true;
