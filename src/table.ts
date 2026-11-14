@@ -9,87 +9,24 @@ import {
   TerminateReason,
 } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
-import type { SchemaProvider } from "./schema-provider";
+import { SystemTable } from "./system-table";
+import { SourceTable } from "./source-table";
 
 export class Table<
-  SCHEMA extends SchemaProvider.AnySchemaProvider,
-  PRIMARY_KEY extends [
-    keyof SchemaProvider.InferOutput<SCHEMA>,
-    ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
-  ],
+  ROW extends Record<string, any>,
+  KEY extends Key,
   TX extends boolean = false,
-  ROW extends SchemaProvider.InferOutput<SCHEMA> =
-    SchemaProvider.InferOutput<SCHEMA>,
-> implements Iterable<ROW> {
-  private _name: string;
-  private _db: Database<Readonly<ROW>>;
-  private _schema: SCHEMA;
-  private _primaryKey: PRIMARY_KEY;
-  private _length: number;
-  private _$beforeInsert?: Stream<Readonly<ROW>>;
-  private _$afterInsert?: Stream<Readonly<ROW>>;
-  private _$beforeUpdate?: Stream<{
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
-  }>;
-  private _$afterUpdate?: Stream<{
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
-  }>;
-  private _$beforeDelete?: Stream<Readonly<ROW>>;
-  private _$afterDelete?: Stream<Readonly<ROW>>;
+> extends SourceTable<ROW, KEY> {
+  private _keySelector: (value: ROW) => KEY;
 
-  constructor(init: Table.Init<SCHEMA, PRIMARY_KEY>) {
-    const { name, env, schema, primaryKey } = init;
-    this._name = name;
-    this._db = env.openDB({
-      name: this._name,
-      sharedStructuresKey: Symbol.for(this._name),
-    });
-    this._schema = schema;
-    this._primaryKey = primaryKey;
-    this._length = 0;
-  }
-  [Symbol.iterator]() {
-    return this.all()[Symbol.iterator]();
-  }
-  get name(): string {
-    return this._name;
-  }
-  get primaryKey(): PRIMARY_KEY {
-    return this._primaryKey;
-  }
-  get $beforeInsert(): Source<Readonly<ROW>> {
-    return Source.from((this._$beforeInsert ??= new Stream()));
-  }
-  get $afterInsert(): Source<Readonly<ROW>> {
-    return Source.from((this._$afterInsert ??= new Stream()));
-  }
-  get $beforeUpdate(): Source<{
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
-  }> {
-    return Source.from((this._$beforeUpdate ??= new Stream()));
-  }
-  get $afterUpdate(): Source<{ curr: Readonly<ROW>; prev: Readonly<ROW> }> {
-    return Source.from((this._$afterUpdate ??= new Stream()));
-  }
-  get $beforeDelete(): Source<Readonly<ROW>> {
-    return Source.from((this._$beforeDelete ??= new Stream()));
-  }
-  get $afterDelete(): Source<Readonly<ROW>> {
-    return Source.from((this._$afterDelete ??= new Stream()));
+  constructor(init: Table.Init<ROW, KEY>) {
+    const { name, env, keySelector } = init;
+
+    super({ env, name });
+
+    this._keySelector = keySelector;
   }
 
-  get(primaryKey: Table.InferColumnsValue<PRIMARY_KEY, ROW>) {
-    return this._db.get(Array.isArray(primaryKey) ? primaryKey : [primaryKey]);
-  }
-  all(): Source<ROW> {
-    return fromIterable(this._db.getRange()).pipe(map((e) => e.value));
-  }
-  get length() {
-    return this._length;
-  }
   insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
       return this._insert(row) as never;
@@ -97,11 +34,7 @@ export class Table<
       return this._db.transaction(() => this._insert(row)) as never;
     }
   }
-  update(
-    row: Partial<Omit<ROW, PRIMARY_KEY[number]>> & {
-      [K in PRIMARY_KEY[number]]: ROW[K];
-    },
-  ): TX extends true ? boolean : Promise<boolean> {
+  update(row: ROW): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
       return this._update(row) as never;
     } else {
@@ -109,19 +42,17 @@ export class Table<
     }
   }
   upsert(row: ROW): TX extends true ? boolean : Promise<boolean> {
-    if (this._db.doesExist(row.id)) {
+    if (this._db.doesExist(this._keySelector(row))) {
       return this.update(row) as never;
     } else {
       return this.insert(row) as never;
     }
   }
-  delete(
-    primaryKey: PRIMARY_KEY,
-  ): TX extends true ? boolean : Promise<boolean> {
+  delete(key: KEY): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
-      return this._delete(primaryKey) as never;
+      return this._delete(key) as never;
     } else {
-      return this._db.transaction(() => this._delete(primaryKey)) as never;
+      return this._db.transaction(() => this._delete(key)) as never;
     }
   }
   private _isInsideTransaction(): boolean {
@@ -131,113 +62,81 @@ export class Table<
       return false;
     }
   }
-  private _makeKey(row: ROW) {
-    return this._primaryKey.map((k) => row[k]);
-  }
-  private _insert(row: ROW): boolean {
-    const parsed = this._schema.parse(row);
 
-    const key = this._makeKey(parsed);
+  private _insert(row: ROW): boolean {
+    const key = this._keySelector(row);
 
     if (this._db.doesExist(key)) return false;
 
-    this._$beforeInsert?.push(parsed);
+    this._$beforeInsert?.push(row);
 
-    this._db.put(key, parsed).then((r) => {
+    this._db.put(key, row).then((r) => {
       if (!r) return;
-      this._length++;
-      this._$afterInsert?.push(parsed);
+      this._$afterInsert?.push(row);
     });
 
     return true;
   }
-  private _update(
-    row: Partial<Omit<ROW, PRIMARY_KEY[number]>> & {
-      [K in PRIMARY_KEY[number]]: ROW[K];
-    },
-  ): boolean {
-    const key = this._makeKey(row);
+  private _update(row: ROW): boolean {
+    const key = this._keySelector(row);
 
     const prev = this._db.get(key);
 
     if (!prev) return false;
 
-    const parsed = this._schema.parse({ ...prev, ...row });
+    this._$beforeUpdate?.push({ curr: row, prev });
 
-    this._$beforeUpdate?.push({ curr: parsed, prev });
-
-    this._db.put(key, parsed).then((r) => {
-      if (r) this._$afterUpdate?.push({ curr: parsed, prev });
+    this._db.put(key, row).then((r) => {
+      if (r) this._$afterUpdate?.push({ curr: row, prev });
     });
 
     return true;
   }
-  private _delete(primaryKey: PRIMARY_KEY): boolean {
-    const prev = this._db.get(primaryKey);
+  private _delete(key: KEY): boolean {
+    const prev = this._db.get(key);
     if (!prev) return false;
 
     this._$beforeDelete?.push(prev);
 
-    this._db.remove(prev.id).then((r) => {
+    this._db.remove(key).then((r) => {
       if (!r) return;
-      this._length--;
       this._$afterDelete?.push(prev);
     });
     return true;
   }
   clear(): Terminate<Source<TerminateReason>> {
     return fromIterable(this._db.getKeys())
-      .pipe(listen((key: PRIMARY_KEY) => this.delete(key)))
+      .pipe(listen((key: KEY) => this.delete(key)))
       .pipe(terminate());
   }
 }
 
-export function defineTable<
-  SCHEMA extends SchemaProvider.AnySchemaProvider,
-  PRIMARY_KEY extends [
-    keyof SchemaProvider.InferOutput<SCHEMA>,
-    ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
-  ],
->(
-  config: Table.Definition<SCHEMA, PRIMARY_KEY>,
-): Table.Definition<SCHEMA, PRIMARY_KEY> {
+export function defineTable<ROW extends Record<string, any>, KEY extends Key>(
+  config: Table.Definition<ROW, KEY>,
+): Table.Definition<ROW, KEY> {
   return config;
 }
 
 export namespace Table {
-  export type AnyTable = Table<any, [any, ...any[]], any, any>;
-  export type AnyDefinition = Definition<any, [any, ...any[]]>;
-  export type Row = Record<string, any> & { id: Key };
+  export type AnyTable = Table<any, any, any>;
+  export type AnyDefinition = Definition<any, any>;
+
   export type InferRow<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, any, infer R> ? R : never;
+    TABLE extends Table<infer R, any, any> ? R : never;
   export type InferPrimaryKey<TABLE extends AnyTable> =
-    TABLE extends Table<any, infer P, any, any> ? P : never;
+    TABLE extends Table<any, infer P, any> ? P : never;
   export type InferTable<DEF extends AnyDefinition> =
-    DEF extends Definition<infer SCHEMA, infer PRIMARY_KEY>
-      ? Table<SCHEMA, PRIMARY_KEY>
-      : never;
-  export type InferColumnsValue<COLS extends any[], ROW> = {
-    [K in keyof COLS]: COLS[K] extends keyof ROW ? ROW[COLS[K]] : never;
-  };
+    DEF extends Definition<infer ROW, infer KEY> ? Table<ROW, KEY> : never;
 
   export type Init<
-    SCHEMA extends SchemaProvider.AnySchemaProvider,
-    PRIMARY_KEY extends [
-      keyof SchemaProvider.InferOutput<SCHEMA>,
-      ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
-    ],
-  > = {
-    name: string;
-    env: RootDatabase;
-    schema: SCHEMA;
-    primaryKey: PRIMARY_KEY;
+    ROW extends Record<string, any>,
+    KEY extends Key,
+  > = SourceTable.Init & {
+    keySelector: (value: ROW) => KEY;
   };
 
   export type Definition<
-    SCHEMA extends SchemaProvider.AnySchemaProvider,
-    PRIMARY_KEY extends [
-      keyof SchemaProvider.InferOutput<SCHEMA>,
-      ...(keyof SchemaProvider.InferOutput<SCHEMA>)[],
-    ],
-  > = Omit<Init<SCHEMA, PRIMARY_KEY>, "env" | "name">;
+    ROW extends Record<string, any>,
+    KEY extends Key,
+  > = Omit<Init<ROW, KEY>, "env" | "name">;
 }

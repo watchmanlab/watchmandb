@@ -1,13 +1,14 @@
 import { Database, RootDatabase } from "lmdb";
-import { Table } from "./table0";
+
 import { listen } from "@watchmanlab/stream";
+import { SourceTable } from "./source-table";
 
 export class SystemTable {
   private _db: Database<SystemTable.Stats, string>;
   private constructor(env: RootDatabase) {
     this._db = env.openDB({ name: "__system" });
   }
-  register(table: Table.AnyTable) {
+  register(table: SourceTable.AnySourceTable) {
     table.$beforeInsert.pipe(
       listen(() => {
         const stats = this._db.get(table.name) ?? { size: 0 };
@@ -21,7 +22,7 @@ export class SystemTable {
       }),
     );
   }
-  getStats(table: Table.AnyTable): SystemTable.Stats {
+  getStats(table: SourceTable.AnySourceTable): SystemTable.Stats {
     return this._db.get(table.name) ?? { size: 0 };
   }
   private static instances: Map<RootDatabase, SystemTable>;
