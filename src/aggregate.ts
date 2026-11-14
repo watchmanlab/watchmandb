@@ -13,44 +13,68 @@ export class Aggregate<
     const { env, name, table } = init;
     super({ env, name: `${table.name}:${name}` });
 
-    table.$beforeInsert.pipe(listen((curr) => this._upsert(curr)));
+    table.$beforeInsert.pipe(
+      listen((curr) => {
+        const key = this.init.groupBy(curr);
+        const prevAcc = this._db.get(key);
+        const currAcc = this.init.reducer(prevAcc ?? this.init.seed, curr);
+        if (!prevAcc) {
+          this._insert(key, currAcc);
+        } else {
+          this._update(key, currAcc, prevAcc);
+        }
+      }),
+    );
     table.$beforeUpdate.pipe(
-      listen(({ curr, prev }) => this._upsert(curr, prev)),
+      listen(({ curr, prev }) => {
+        this._delete(prev);
+
+        const currKey = this.init.groupBy(curr);
+        const prevAcc = this._db.get(currKey);
+        const currAcc = this.init.reducer(
+          prevAcc ?? this.init.seed,
+          curr,
+          prev,
+        );
+        if (!prevAcc) {
+          this._insert(currKey, currAcc);
+        } else {
+          this._update(currKey, currAcc, prevAcc);
+        }
+      }),
     );
     table.$beforeDelete.pipe(listen((prev) => this._delete(prev)));
   }
 
-  private _upsert(curr: ROW, prev?: ROW) {
-    const key = this.init.groupBy(curr);
-    const prevAcc = this._db.get(key);
-    const currAcc = this.init.reducer(prevAcc ?? this.init.seed, curr, prev);
+  private _insert(key: KEY, acc: VALUE) {
+    this._$beforeInsert?.push(acc);
 
-    if (prevAcc) {
-      this._$beforeUpdate?.push({ curr: currAcc, prev: prevAcc });
+    this._db.put(key, acc).then((r) => {
+      if (!r) return;
+      this._$afterInsert?.push(acc);
+    });
+  }
 
-      this._db.put(key, currAcc).then((r) => {
-        if (!r) return;
-        this._$afterUpdate?.push({ curr: currAcc, prev: prevAcc });
-      });
-    } else {
-      this._$beforeInsert?.push(currAcc);
+  private _update(key: KEY, currAcc: VALUE, prevAcc: VALUE) {
+    this._$beforeUpdate?.push({ curr: currAcc, prev: prevAcc });
 
-      this._db.put(key, currAcc).then((r) => {
-        if (!r) return;
-        this._$afterInsert?.push(currAcc);
-      });
-    }
+    this._db.put(key, currAcc).then((r) => {
+      if (!r) return;
+      this._$afterUpdate?.push({ curr: currAcc, prev: prevAcc });
+    });
   }
   private _delete(prev: ROW) {
     const key = this.init.groupBy(prev);
     const prevAcc = this._db.get(key);
     if (!prevAcc) return;
 
-    this._$beforeDelete?.push(prevAcc);
+    const currAcc = this.init.reducer(prevAcc, undefined, prev);
 
-    this._db.put(key, this.init.reducer(prevAcc, undefined, prev)).then((r) => {
+    this._$beforeDelete?.push(currAcc);
+
+    this._db.put(key, currAcc).then((r) => {
       if (!r) return;
-      this._$afterDelete?.push(prevAcc);
+      this._$afterDelete?.push(currAcc);
     });
   }
 }

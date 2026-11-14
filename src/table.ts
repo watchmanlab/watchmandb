@@ -1,15 +1,12 @@
 import {
   fromIterable,
   listen,
-  map,
   Source,
-  Stream,
   Terminate,
   terminate,
   TerminateReason,
 } from "@watchmanlab/stream";
-import type { Database, Key, RootDatabase } from "lmdb";
-import { SystemTable } from "./system-table";
+import type { Key } from "lmdb";
 import { SourceTable } from "./source-table";
 
 export class Table<
@@ -17,14 +14,8 @@ export class Table<
   KEY extends Key,
   TX extends boolean = false,
 > extends SourceTable<ROW, KEY> {
-  private _keySelector: (value: ROW) => KEY;
-
-  constructor(init: Table.Init<ROW, KEY>) {
-    const { name, env, keySelector } = init;
-
-    super({ env, name });
-
-    this._keySelector = keySelector;
+  constructor(private init: Table.Init<ROW, KEY>) {
+    super(init);
   }
 
   insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
@@ -42,7 +33,7 @@ export class Table<
     }
   }
   upsert(row: ROW): TX extends true ? boolean : Promise<boolean> {
-    if (this._db.doesExist(this._keySelector(row))) {
+    if (this._db.doesExist(this.init.keySelector(row))) {
       return this.update(row) as never;
     } else {
       return this.insert(row) as never;
@@ -64,7 +55,7 @@ export class Table<
   }
 
   private _insert(row: ROW): boolean {
-    const key = this._keySelector(row);
+    const key = this.init.keySelector(row);
 
     if (this._db.doesExist(key)) return false;
 
@@ -78,7 +69,7 @@ export class Table<
     return true;
   }
   private _update(row: ROW): boolean {
-    const key = this._keySelector(row);
+    const key = this.init.keySelector(row);
 
     const prev = this._db.get(key);
 

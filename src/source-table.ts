@@ -1,13 +1,4 @@
-import {
-  fromIterable,
-  listen,
-  map,
-  Source,
-  Stream,
-  Terminate,
-  terminate,
-  TerminateReason,
-} from "@watchmanlab/stream";
+import { fromIterable, map, Source, Stream } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
 import { SystemTable } from "./system-table";
 
@@ -18,7 +9,6 @@ export abstract class SourceTable<
   protected _name: string;
   protected _env: RootDatabase;
   protected _db: Database<Readonly<ROW>>;
-
   protected _$beforeInsert?: Stream<Readonly<ROW>>;
   protected _$afterInsert?: Stream<Readonly<ROW>>;
   protected _$beforeUpdate?: Stream<{
@@ -84,14 +74,10 @@ export abstract class SourceTable<
 
 export namespace SourceTable {
   export type AnySourceTable = SourceTable<any, any>;
-
   export type InferRow<TABLE extends AnySourceTable> =
     TABLE extends SourceTable<infer R, any> ? R : never;
-  export type InferPrimaryKey<TABLE extends AnySourceTable> =
+  export type InferKey<TABLE extends AnySourceTable> =
     TABLE extends SourceTable<any, infer P> ? P : never;
 
-  export type Init = {
-    name: string;
-    env: RootDatabase;
-  };
+  export type Init = { name: string; env: RootDatabase };
 }
