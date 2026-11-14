@@ -29,12 +29,12 @@ export class Table<
   private _$beforeInsert?: Stream<Readonly<ROW>>;
   private _$afterInsert?: Stream<Readonly<ROW>>;
   private _$beforeUpdate?: Stream<{
-    newRow: Readonly<ROW>;
-    oldRow: Readonly<ROW>;
+    curr: Readonly<ROW>;
+    prev: Readonly<ROW>;
   }>;
   private _$afterUpdate?: Stream<{
-    newRow: Readonly<ROW>;
-    oldRow: Readonly<ROW>;
+    curr: Readonly<ROW>;
+    prev: Readonly<ROW>;
   }>;
   private _$beforeDelete?: Stream<Readonly<ROW>>;
   private _$afterDelete?: Stream<Readonly<ROW>>;
@@ -66,12 +66,12 @@ export class Table<
     return Source.from((this._$afterInsert ??= new Stream()));
   }
   get $beforeUpdate(): Source<{
-    newRow: Readonly<ROW>;
-    oldRow: Readonly<ROW>;
+    curr: Readonly<ROW>;
+    prev: Readonly<ROW>;
   }> {
     return Source.from((this._$beforeUpdate ??= new Stream()));
   }
-  get $afterUpdate(): Source<{ newRow: Readonly<ROW>; oldRow: Readonly<ROW> }> {
+  get $afterUpdate(): Source<{ curr: Readonly<ROW>; prev: Readonly<ROW> }> {
     return Source.from((this._$afterUpdate ??= new Stream()));
   }
   get $beforeDelete(): Source<Readonly<ROW>> {
@@ -162,30 +162,30 @@ export class Table<
   ): boolean {
     const key = this._makeKey(row);
 
-    const oldRow = this._db.get(key);
+    const prev = this._db.get(key);
 
-    if (!oldRow) return false;
+    if (!prev) return false;
 
-    const parsed = this._schema.parse({ ...oldRow, ...row });
+    const parsed = this._schema.parse({ ...prev, ...row });
 
-    this._$beforeUpdate?.push({ newRow: parsed, oldRow });
+    this._$beforeUpdate?.push({ curr: parsed, prev });
 
     this._db.put(key, parsed).then((r) => {
-      if (r) this._$afterUpdate?.push({ newRow: parsed, oldRow });
+      if (r) this._$afterUpdate?.push({ curr: parsed, prev });
     });
 
     return true;
   }
   private _delete(primaryKey: PRIMARY_KEY): boolean {
-    const oldRow = this._db.get(primaryKey);
-    if (!oldRow) return false;
+    const prev = this._db.get(primaryKey);
+    if (!prev) return false;
 
-    this._$beforeDelete?.push(oldRow);
+    this._$beforeDelete?.push(prev);
 
-    this._db.remove(oldRow.id).then((r) => {
+    this._db.remove(prev.id).then((r) => {
       if (!r) return;
       this._length--;
-      this._$afterDelete?.push(oldRow);
+      this._$afterDelete?.push(prev);
     });
     return true;
   }

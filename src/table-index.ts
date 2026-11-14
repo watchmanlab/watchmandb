@@ -33,7 +33,7 @@ export class Index<
     this._init();
     table.$beforeInsert.pipe(listen((newRow) => this._insert(newRow)));
     table.$beforeUpdate.pipe(
-      listen(({ newRow, oldRow }) => this._update(newRow, oldRow)),
+      listen(({ curr, prev }) => this._update(curr, prev)),
     );
     table.$beforeDelete.pipe(listen((oldRow) => this._delete(oldRow)));
   }
@@ -55,16 +55,15 @@ export class Index<
     ];
   }
   private _insert(newRow: ROW) {
-    const { _unique, _name } = this;
     const newKey = this._makeKey(newRow);
 
-    if (_unique) {
+    if (this._unique) {
       const [colVal] = newKey;
 
       this.equal(colVal as COLUMN)
         .consume((self) => {
           self.terminate("abort");
-          throw new Error(`duplicate key ${String(colVal)} at ${_name}`);
+          throw new Error(`duplicate key ${String(colVal)} at ${this._name}`);
         })
         .next();
     }
@@ -72,21 +71,19 @@ export class Index<
     this._db.put(newKey, null);
   }
   private _update(newRow: ROW, oldRow: ROW) {
-    const { _unique, _name } = this;
-
     const oldKey = this._makeKey(oldRow);
     const newKey = this._makeKey(newRow);
 
     if (isDeepEqual(oldKey, newKey)) return;
 
-    if (_unique) {
+    if (this._unique) {
       const [colVal, rowId] = newKey;
 
       this.equal(colVal as COLUMN)
         .consume((self, oldRowId) => {
           if (oldRowId !== rowId) {
             self.terminate("abort");
-            throw new Error(`duplicate key ${String(colVal)} at ${_name}`);
+            throw new Error(`duplicate key ${String(colVal)} at ${this._name}`);
           }
           self.next();
         })

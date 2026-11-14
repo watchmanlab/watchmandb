@@ -2,11 +2,12 @@ import { open, RootDatabase, RootDatabaseOptions } from "lmdb";
 import { Table } from "./table";
 import { Index } from "./table-index";
 import { Stream } from "@watchmanlab/stream";
+import z from "zod";
 
 export type Config = {
   path: string;
   tables: {
-    [K: string]: Table.AnyDefinition;
+    [K: string]: Table.AnyDefinition & { indexes: Index.Definition<any, any> };
   };
 };
 
@@ -17,3 +18,11 @@ export function createDb<CONFIG extends Config>(
   const { path, tables } = config;
   const env = open(path, { ...options, maxDbs: 10 });
 }
+
+const userSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  age: z.number(),
+});
+
+const stream = new Stream<z.output<typeof userSchema>>();
