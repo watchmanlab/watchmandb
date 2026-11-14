@@ -10,7 +10,8 @@ export class Aggregate<
 > {
   private _name: string;
   private _db: Database;
-  private _table: TABLE;
+  private _source: TABLE;
+  //   private _table: TABLE;
   constructor(config: {
     env: RootDatabase;
     table: TABLE;
@@ -20,25 +21,26 @@ export class Aggregate<
     reducer: (acc: VALUE, curr?: ROW, prev?: ROW) => VALUE;
   }) {
     const { env, groupBy, name, reducer, seed, table } = config;
-    this._table = table;
+    this._source = table;
     this._name = `${table.name}:${name}`;
+    // this._table = new Table({env,name:this._name ,primaryKey:})
     this._db = env.openDB({ name: this._name });
 
-    this._table.$beforeInsert.pipe(
+    this._source.$beforeInsert.pipe(
       listen((curr) => {
         const key = groupBy(curr);
         const acc = this._db.get(key) ?? seed;
         this._db.put(groupBy(curr), reducer(acc, curr));
       }),
     );
-    this._table.$beforeUpdate.pipe(
+    this._source.$beforeUpdate.pipe(
       listen(({ curr, prev }) => {
         const key = groupBy(prev);
-        const acc = this._db.get(key);
+        const acc = this._db.get(key) ?? seed;
         this._db.put(key, reducer(acc, curr, prev));
       }),
     );
-    this._table.$beforeDelete.pipe(
+    this._source.$beforeDelete.pipe(
       listen((prev) => {
         const key = groupBy(prev);
         const acc = this._db.get(key);

@@ -80,11 +80,7 @@ export class Table<
   get $afterDelete(): Source<Readonly<ROW>> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
-  query() {
-    return {
-      execute: () => {},
-    };
-  }
+
   get(primaryKey: Table.InferColumnsValue<PRIMARY_KEY, ROW>) {
     return this._db.get(Array.isArray(primaryKey) ? primaryKey : [primaryKey]);
   }
