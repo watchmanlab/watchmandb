@@ -1,5 +1,12 @@
-import { Consumable, Consumer, Source, Stream } from "@watchmanlab/stream";
-import { Database, Key, RootDatabase } from "lmdb";
+import {
+  Consumable,
+  Consumer,
+  Map as MapSource,
+  Source,
+  Stream,
+  ValueOfConsumable,
+} from "@watchmanlab/stream";
+import { Database, Key, open, RootDatabase } from "lmdb";
 
 export class Write<INPUT extends Consumable<Command>> extends Source<
   Promise<boolean>
@@ -74,11 +81,24 @@ export class Write<INPUT extends Consumable<Command>> extends Source<
 export function write<INPUT extends Consumable<Command>>(env: RootDatabase) {
   return ($input: INPUT) => new Write($input, env);
 }
-export function createWriter() {
-  return new Stream<Command>();
+export function map<INPUT extends Consumable.AnyConsumable>(
+  mapper: (value: ValueOfConsumable<INPUT>, index: number) => Command,
+) {
+  return ($input: INPUT) => new MapSource($input, mapper);
 }
 export type Command =
   | { type: "insert"; table: string; id: Key; payload: any }
   | { type: "update"; table: string; id: Key; payload: any }
   | { type: "upsert"; table: string; id: Key; payload: any }
   | { type: "delete"; table: string; id: Key };
+
+new Stream<string>()
+  .pipe(
+    map((v) => ({
+      type: "insert",
+      table: "users",
+      id: "",
+      payload: {},
+    })),
+  )
+  .pipe(write(null as never));
