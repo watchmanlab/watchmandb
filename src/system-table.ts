@@ -25,7 +25,7 @@ export class SystemTable {
   getStats(table: Table.AnyTable): SystemTable.Stats {
     return this._db.get(table.name) ?? { size: 0 };
   }
-  private static instances: Map<RootDatabase, SystemTable>;
+  private static instances: Map<RootDatabase, SystemTable> = new Map();
   static getInstance(env: RootDatabase) {
     let instance = SystemTable.instances.get(env);
 

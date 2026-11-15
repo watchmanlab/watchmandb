@@ -8,18 +8,19 @@ import {
   Stream,
 } from "@watchmanlab/stream";
 import { Table } from "./table";
-import { Database, Key, RootDatabase } from "lmdb";
+import { Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
 
 export class Index<
   SOURCE extends Table.AnyTable,
-  KEY extends keyof Table.InferRow<SOURCE>,
-  SOURCE_ROW extends Table.InferRow<SOURCE> = Table.InferRow<SOURCE>,
+  KEY extends Key,
+  VALUE = KEY,
   SOURCE_KEY extends Table.InferKey<SOURCE> = Table.InferKey<SOURCE>,
+  SOURCE_VALUE extends Table.InferValue<SOURCE> = Table.InferValue<SOURCE>,
 > {
-  private _table: Table<{}, [KEY, Table.InferKey<SOURCE>]>;
+  private _table: Table<[KEY, Table.InferKey<SOURCE>], VALUE>;
 
-  constructor(private init: Index.Init<SOURCE, KEY>) {
+  constructor(private init: Index.Init<SOURCE, KEY, VALUE>) {
     const { name, env, table } = init;
 
     this._table = new Table({ env, name: `${table.name}:${name}` });
@@ -41,16 +42,16 @@ export class Index<
     // if (!_table.length || !this._db.getRange()[Symbol.iterator]().next().done)
     //   return;
     // this._db.transaction(() =>
-    //   _table.all().pipe(listen((row) => this._insert(row))),
+    //   _table.all().pipe(listen((value) => this._insert(value))),
     // );
   }
   private _makeKey(
     key: SOURCE_KEY,
-    row: SOURCE_ROW,
+    value: SOURCE_VALUE,
   ): [KEY, Table.InferKey<SOURCE>] {
-    return [this.init.keySelector(row), key];
+    return [this.init.keySelector(value), key];
   }
-  private _insert(key: SOURCE_KEY, curr: SOURCE_ROW) {
+  private _insert(key: SOURCE_KEY, curr: SOURCE_VALUE) {
     const newKey = this._makeKey(key, curr);
 
     if (this.init.unique) {
@@ -66,9 +67,12 @@ export class Index<
         .next();
     }
 
-    this._table.insert(newKey, {});
+    this._table.insert(
+      newKey,
+      this.init.valueSelector?.(curr) ?? (null as VALUE),
+    );
   }
-  private _update(key: SOURCE_KEY, curr: SOURCE_ROW, prev: SOURCE_ROW) {
+  private _update(key: SOURCE_KEY, curr: SOURCE_VALUE, prev: SOURCE_VALUE) {
     const oldKey = this._makeKey(key, prev);
     const newKey = this._makeKey(key, curr);
 
@@ -91,61 +95,64 @@ export class Index<
     }
 
     this._table.delete(oldKey);
-    this._table.insert(newKey, {});
+    this._table.insert(
+      newKey,
+      this.init.valueSelector?.(curr) ?? (null as VALUE),
+    );
   }
-  private _delete(key: SOURCE_KEY, prev: SOURCE_ROW) {
+  private _delete(key: SOURCE_KEY, prev: SOURCE_VALUE) {
     this._table.delete(this._makeKey(key, prev));
   }
 
-  equal(key: SOURCE_ROW[KEY]): Source<SOURCE_KEY> {
+  equal(key: KEY): Source<VALUE> {
     return fromIterable(
-      this._table["_db"].getKeys({ start: [key], end: [key, "\xff"] }),
-    ).pipe(map((key) => key[1]));
+      this._table["_db"].getRange({ start: [key], end: [key, "\xff"] }),
+    ).pipe(map(({ key, value }) => value ?? key[1]));
   }
-  notEqual(key: SOURCE_ROW[KEY]) {
+  notEqual(key: KEY): Source<VALUE> {
     const left = this.lessThan(key);
     const right = this.greaterThan(key);
 
-    return of(left, right).pipe(flat$());
+    return of(left, right).pipe(flat$()) as never;
   }
-  in(keys: [SOURCE_ROW[KEY], SOURCE_ROW[KEY], ...SOURCE_ROW[KEY][]]) {
+  in(keys: [KEY, KEY, ...KEY[]]): Source<VALUE> {
     return fromIterable(keys)
       .pipe(map((key) => this.equal(key)))
       .pipe(flat$());
   }
-  startWith(prefix: SOURCE_ROW[KEY]): Source<SOURCE_KEY> {
+  startWith(prefix: string): Source<VALUE> {
     const endPrefix =
       prefix.slice(0, -1) +
       String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
 
     return fromIterable(
-      this._table["_db"].getKeys({ start: prefix, end: endPrefix }),
-    ).pipe(map((key) => key[1]));
+      this._table["_db"].getRange({ start: prefix, end: endPrefix }),
+    ).pipe(map(({ key, value }) => value ?? key[1]));
   }
-  lessThan(key: SOURCE_ROW[KEY]): Source<SOURCE_KEY> {
-    return fromIterable(this._table["_db"].getKeys({ end: key })).pipe(
-      map((key) => key[1]),
+  lessThan(key: KEY): Source<VALUE> {
+    return fromIterable(this._table["_db"].getRange({ end: key })).pipe(
+      map(({ key, value }) => value ?? key[1]),
     );
   }
-  lessThanOrEqual(key: SOURCE_ROW[KEY]): Source<SOURCE_KEY> {
+  lessThanOrEqual(key: KEY): Source<VALUE> {
     return fromIterable(
-      this._table["_db"].getKeys({ end: [key, "\xff"] }),
-    ).pipe(map((key) => key[1]));
+      this._table["_db"].getRange({ end: [key, "\xff"] }),
+    ).pipe(map(({ key, value }) => value ?? key[1]));
   }
-  greaterThan(key: SOURCE_ROW[KEY]): Source<SOURCE_KEY> {
+  greaterThan(key: KEY): Source<VALUE> {
     return fromIterable(
-      this._table["_db"].getKeys({ start: [key, "\xff"] }),
-    ).pipe(map((key) => key[1]));
+      this._table["_db"].getRange({ start: [key, "\xff"] }),
+    ).pipe(map(({ key, value }) => value ?? key[1]));
   }
-  greaterThanOrEqual(key: SOURCE_ROW[KEY]): Source<SOURCE_KEY> {
-    return fromIterable(this._table["_db"].getKeys({ start: key })).pipe(
-      map((key) => key[1]),
+  greaterThanOrEqual(key: KEY): Source<VALUE> {
+    return fromIterable(this._table["_db"].getRange({ start: key })).pipe(
+      map(({ key, value }) => value ?? key[1]),
     );
   }
-  between(start: SOURCE_ROW[KEY], end: SOURCE_ROW[KEY]): Source<SOURCE_KEY> {
+  between(start: KEY, end: KEY): Source<VALUE> {
     return fromIterable(
-      this._table["_db"].getKeys({ start: [start], end: [end, "\xff"] }),
-    ).pipe(map((key) => key[1]));
+      this._table["_db"].getRange({ start: [start], end: [end, "\xff"] }),
+    ).pipe(map(({ key, value }) => value ?? key[1]));
   }
 }
 
@@ -153,14 +160,12 @@ export namespace Index {
   export type AnyIndex = Index<any, any, any>;
   export type InferKey<T extends AnyIndex> =
     T extends Index<any, infer K, any> ? K : never;
-  export type Init<
-    SOURCE extends Table.AnyTable,
-    KEY extends keyof Table.InferRow<SOURCE>,
-  > = {
+  export type Init<SOURCE extends Table.AnyTable, KEY extends Key, VALUE> = {
     name: string;
     env: RootDatabase;
     table: SOURCE;
-    keySelector: (curr: Table.InferRow<SOURCE>) => KEY;
+    keySelector: (curr: Table.InferValue<SOURCE>) => KEY;
+    valueSelector?: (curr: Table.InferValue<SOURCE>) => VALUE;
     unique?: boolean;
   };
 }

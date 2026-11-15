@@ -4,13 +4,6 @@ import { Index } from "./table-index";
 import { Stream } from "@watchmanlab/stream";
 import z from "zod";
 
-export type Config = {
-  path: string;
-  tables: {
-    [K: string]: Table.Init & { indexes: Index.Definition<any, any> };
-  };
-};
-
 export function createDb<CONFIG extends Config>(
   config: CONFIG,
   options?: RootDatabaseOptions,

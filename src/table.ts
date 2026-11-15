@@ -12,29 +12,29 @@ import type { Database, Key, RootDatabase } from "lmdb";
 import { SystemTable } from "./system-table";
 
 export class Table<
-  ROW extends Record<string, any>,
   KEY extends Key,
+  VALUE,
   TX extends boolean = false,
-> implements Iterable<ROW> {
+> implements Iterable<VALUE> {
   private _name: string;
   private _env: RootDatabase;
-  private _db: Database<Readonly<ROW>, KEY>;
+  private _db: Database<Readonly<VALUE>, KEY>;
 
-  private _$beforeInsert?: Stream<{ key: KEY; curr: Readonly<ROW> }>;
-  private _$afterInsert?: Stream<{ key: KEY; curr: Readonly<ROW> }>;
+  private _$beforeInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
+  private _$afterInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
   private _$beforeUpdate?: Stream<{
     key: KEY;
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
+    curr: Readonly<VALUE>;
+    prev: Readonly<VALUE>;
   }>;
   private _$afterUpdate?: Stream<{
     key: KEY;
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
+    curr: Readonly<VALUE>;
+    prev: Readonly<VALUE>;
   }>;
-  private _$beforeDelete?: Stream<{ key: KEY; prev: Readonly<ROW> }>;
-  private _$afterDelete?: Stream<{ key: KEY; prev: Readonly<ROW> }>;
-  constructor(private init: Table.Init) {
+  private _$beforeDelete?: Stream<{ key: KEY; prev: Readonly<VALUE> }>;
+  private _$afterDelete?: Stream<{ key: KEY; prev: Readonly<VALUE> }>;
+  constructor(init: Table.Init) {
     const { name, env } = init;
     this._name = name;
     this._env = env;
@@ -55,58 +55,58 @@ export class Table<
   get stats(): SystemTable.Stats {
     return SystemTable.getInstance(this._env).getStats(this);
   }
-  get $beforeInsert(): Source<{ key: KEY; curr: Readonly<ROW> }> {
+  get $beforeInsert(): Source<{ key: KEY; curr: Readonly<VALUE> }> {
     return Source.from((this._$beforeInsert ??= new Stream()));
   }
-  get $afterInsert(): Source<{ key: KEY; curr: Readonly<ROW> }> {
+  get $afterInsert(): Source<{ key: KEY; curr: Readonly<VALUE> }> {
     return Source.from((this._$afterInsert ??= new Stream()));
   }
   get $beforeUpdate(): Source<{
     key: KEY;
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
+    curr: Readonly<VALUE>;
+    prev: Readonly<VALUE>;
   }> {
     return Source.from((this._$beforeUpdate ??= new Stream()));
   }
   get $afterUpdate(): Source<{
     key: KEY;
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
+    curr: Readonly<VALUE>;
+    prev: Readonly<VALUE>;
   }> {
     return Source.from((this._$afterUpdate ??= new Stream()));
   }
-  get $beforeDelete(): Source<{ key: KEY; prev: Readonly<ROW> }> {
+  get $beforeDelete(): Source<{ key: KEY; prev: Readonly<VALUE> }> {
     return Source.from((this._$beforeDelete ??= new Stream()));
   }
-  get $afterDelete(): Source<{ key: KEY; prev: Readonly<ROW> }> {
+  get $afterDelete(): Source<{ key: KEY; prev: Readonly<VALUE> }> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
 
   get(key: KEY) {
     return this._db.get(key);
   }
-  all(): Source<ROW> {
+  all(): Source<VALUE> {
     return fromIterable(this._db.getRange()).pipe(map((e) => e.value));
   }
-  insert(key: KEY, row: ROW): TX extends true ? boolean : Promise<boolean> {
+  insert(key: KEY, value: VALUE): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
-      return this._insert(key, row) as never;
+      return this._insert(key, value) as never;
     } else {
-      return this._db.transaction(() => this._insert(key, row)) as never;
+      return this._db.transaction(() => this._insert(key, value)) as never;
     }
   }
-  update(key: KEY, row: ROW): TX extends true ? boolean : Promise<boolean> {
+  update(key: KEY, value: VALUE): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
-      return this._update(key, row) as never;
+      return this._update(key, value) as never;
     } else {
-      return this._db.transaction(() => this._update(key, row)) as never;
+      return this._db.transaction(() => this._update(key, value)) as never;
     }
   }
-  upsert(key: KEY, row: ROW): TX extends true ? boolean : Promise<boolean> {
+  upsert(key: KEY, value: VALUE): TX extends true ? boolean : Promise<boolean> {
     if (this._db.doesExist(key)) {
-      return this.update(key, row) as never;
+      return this.update(key, value) as never;
     } else {
-      return this.insert(key, row) as never;
+      return this.insert(key, value) as never;
     }
   }
   delete(key: KEY): TX extends true ? boolean : Promise<boolean> {
@@ -124,7 +124,7 @@ export class Table<
     }
   }
 
-  private _insert(key: KEY, curr: ROW): boolean {
+  private _insert(key: KEY, curr: VALUE): boolean {
     if (this._db.doesExist(key)) return false;
 
     this._$beforeInsert?.push({ key, curr });
@@ -136,7 +136,7 @@ export class Table<
 
     return true;
   }
-  private _update(key: KEY, curr: ROW): boolean {
+  private _update(key: KEY, curr: VALUE): boolean {
     const prev = this._db.get(key);
 
     if (!prev) return false;
@@ -170,10 +170,10 @@ export class Table<
 
 export namespace Table {
   export type AnyTable = Table<any, any, any>;
-  export type InferRow<TABLE extends AnyTable> =
-    TABLE extends Table<infer R, any, any> ? R : never;
+  export type InferValue<TABLE extends AnyTable> =
+    TABLE extends Table<any, infer V, any> ? V : never;
   export type InferKey<TABLE extends AnyTable> =
-    TABLE extends Table<any, infer P, any> ? P : never;
+    TABLE extends Table<infer K, any, any> ? K : never;
 
   export type Init = {
     name: string;

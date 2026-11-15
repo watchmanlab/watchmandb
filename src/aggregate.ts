@@ -6,12 +6,12 @@ import { Table } from "./table";
 
 export class Aggregate<
   TABLE extends Table.AnyTable,
-  ROW extends Record<string, any>,
   KEY extends Key,
-  SOURCE_ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+  VALUE,
+  SOURCE_VALUE extends Table.InferValue<TABLE> = Table.InferValue<TABLE>,
 > {
-  private _table: Table<ROW, KEY>;
-  constructor(private init: Aggregate.Init<TABLE, ROW, KEY, SOURCE_ROW>) {
+  private _table: Table<KEY, VALUE>;
+  constructor(private init: Aggregate.Init<TABLE, KEY, VALUE, SOURCE_VALUE>) {
     const { env, name, table } = init;
 
     this._table = new Table({ env, name: `${table.name}:${name}` });
@@ -25,7 +25,7 @@ export class Aggregate<
     table.$beforeDelete.pipe(listen(({ prev }) => this._delete(prev)));
   }
 
-  private _insert(curr: SOURCE_ROW) {
+  private _insert(curr: SOURCE_VALUE) {
     const currKey = this.init.groupBy(curr);
     const prevAcc = this._table.get(currKey);
     const currAcc = this.init.reducer(
@@ -37,7 +37,7 @@ export class Aggregate<
     this._commit(currKey, currAcc, prevAcc);
   }
 
-  private _update(curr: SOURCE_ROW, prev: SOURCE_ROW) {
+  private _update(curr: SOURCE_VALUE, prev: SOURCE_VALUE) {
     const prevKey = this.init.groupBy(prev);
     const currKey = this.init.groupBy(curr);
 
@@ -53,7 +53,7 @@ export class Aggregate<
     this._commit(currKey, currAcc, prevAcc);
   }
 
-  private _delete(prev: SOURCE_ROW) {
+  private _delete(prev: SOURCE_VALUE) {
     const key = this.init.groupBy(prev);
     const prevAcc = this._table.get(key);
     if (!prevAcc) return;
@@ -63,7 +63,7 @@ export class Aggregate<
     this._commit(key, currAcc, prevAcc);
   }
 
-  private _commit(key: KEY, currAcc: ROW, prevAcc?: ROW) {
+  private _commit(key: KEY, currAcc: VALUE, prevAcc?: VALUE) {
     if (isDeepEqual(currAcc, this.init.seed)) {
       if (!prevAcc) return;
 
@@ -77,10 +77,10 @@ export class Aggregate<
       this._table.update(key, currAcc);
     }
   }
-  get table(): Table<ROW, KEY, false> {
+  get table(): Table<KEY, VALUE, false> {
     return this._table;
   }
-  get(key: KEY): Readonly<ROW> {
+  get(key: KEY): Readonly<VALUE> {
     return this._table.get(key) ?? this.init.seed;
   }
 }
@@ -88,19 +88,19 @@ export class Aggregate<
 export namespace Aggregate {
   export type Init<
     TABLE extends Table.AnyTable,
-    ROW extends Record<string, any>,
     KEY extends Key,
-    SOURCE_ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+    VALUE,
+    SOURCE_VALUE extends Table.InferValue<TABLE> = Table.InferValue<TABLE>,
   > = {
     env: RootDatabase;
     table: TABLE;
     name: string;
-    seed: Readonly<ROW>;
-    groupBy: (row: Readonly<SOURCE_ROW>) => KEY;
+    seed: Readonly<VALUE>;
+    groupBy: (row: Readonly<SOURCE_VALUE>) => KEY;
     reducer: (
-      acc: Readonly<ROW>,
-      curr?: Readonly<SOURCE_ROW>,
-      prev?: Readonly<SOURCE_ROW>,
-    ) => Readonly<ROW>;
+      acc: Readonly<VALUE>,
+      curr?: Readonly<SOURCE_VALUE>,
+      prev?: Readonly<SOURCE_VALUE>,
+    ) => Readonly<VALUE>;
   };
 }
