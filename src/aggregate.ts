@@ -1,96 +1,116 @@
 import { Key, RootDatabase } from "lmdb";
-import { Table } from "./table";
 import { listen } from "@watchmanlab/stream";
 import { SourceTable } from "./source-table";
+import { isDeepEqual } from "./utils";
 
 export class Aggregate<
-  TABLE extends Table.AnyTable,
+  TABLE extends SourceTable.AnySourceTable,
   VALUE extends Record<string, any>,
   KEY extends Key,
-  ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+  ROW extends SourceTable.InferRow<TABLE> = SourceTable.InferRow<TABLE>,
 > extends SourceTable<VALUE, KEY> {
   constructor(private init: Aggregate.Init<TABLE, VALUE, KEY, ROW>) {
     const { env, name, table } = init;
+
     super({ env, name: `${table.name}:${name}` });
 
-    table.$beforeInsert.pipe(
-      listen((curr) => {
-        const key = this.init.groupBy(curr);
-        const prevAcc = this._db.get(key);
-        const currAcc = this.init.reducer(prevAcc ?? this.init.seed, curr);
-        if (!prevAcc) {
-          this._insert(key, currAcc);
-        } else {
-          this._update(key, currAcc, prevAcc);
-        }
-      }),
-    );
-    table.$beforeUpdate.pipe(
-      listen(({ curr, prev }) => {
-        this._delete(prev);
+    this.init.seed = Object.freeze(init.seed);
 
-        const currKey = this.init.groupBy(curr);
-        const prevAcc = this._db.get(currKey);
-        const currAcc = this.init.reducer(
-          prevAcc ?? this.init.seed,
-          curr,
-          prev,
-        );
-        if (!prevAcc) {
-          this._insert(currKey, currAcc);
-        } else {
-          this._update(currKey, currAcc, prevAcc);
-        }
-      }),
+    table.$beforeInsert.pipe(listen((curr) => this._insert(curr)));
+    table.$beforeUpdate.pipe(
+      listen(({ curr, prev }) => this._update(curr, prev)),
     );
     table.$beforeDelete.pipe(listen((prev) => this._delete(prev)));
   }
 
-  private _insert(key: KEY, acc: VALUE) {
-    this._$beforeInsert?.push(acc);
+  protected _insert(curr: ROW) {
+    const currKey = this.init.groupBy(curr);
+    const prevAcc = this._db.get(currKey);
+    const currAcc = this.init.reducer(
+      prevAcc ?? this.init.seed,
+      curr,
+      undefined,
+    );
 
-    this._db.put(key, acc).then((r) => {
-      if (!r) return;
-      this._$afterInsert?.push(acc);
-    });
+    this._commit(currKey, currAcc, prevAcc);
   }
 
-  private _update(key: KEY, currAcc: VALUE, prevAcc: VALUE) {
-    this._$beforeUpdate?.push({ curr: currAcc, prev: prevAcc });
+  protected _update(curr: ROW, prev: ROW) {
+    const prevKey = this.init.groupBy(prev);
+    const currKey = this.init.groupBy(curr);
 
-    this._db.put(key, currAcc).then((r) => {
-      if (!r) return;
-      this._$afterUpdate?.push({ curr: currAcc, prev: prevAcc });
-    });
+    if (!isDeepEqual(prevKey, currKey)) {
+      this._delete(prev);
+      this._insert(curr);
+      return;
+    }
+
+    const prevAcc = this._db.get(currKey);
+    const currAcc = this.init.reducer(prevAcc ?? this.init.seed, curr, prev);
+
+    this._commit(currKey, currAcc, prevAcc);
   }
-  private _delete(prev: ROW) {
+
+  protected _delete(prev: ROW) {
     const key = this.init.groupBy(prev);
     const prevAcc = this._db.get(key);
     if (!prevAcc) return;
 
     const currAcc = this.init.reducer(prevAcc, undefined, prev);
 
-    this._$beforeDelete?.push(currAcc);
+    this._commit(key, currAcc, prevAcc);
+  }
 
-    this._db.put(key, currAcc).then((r) => {
-      if (!r) return;
-      this._$afterDelete?.push(currAcc);
-    });
+  private _commit(key: KEY, currAcc: VALUE, prevAcc?: VALUE) {
+    if (isDeepEqual(currAcc, this.init.seed)) {
+      if (!prevAcc) return;
+
+      this._$beforeDelete?.push(prevAcc);
+
+      this._db.remove(key).then((r) => {
+        if (!r) return;
+        this._$afterDelete?.push(prevAcc);
+      });
+      return;
+    }
+
+    if (!prevAcc) {
+      this._$beforeInsert?.push(currAcc);
+
+      this._db.put(key, currAcc).then((r) => {
+        if (!r) return;
+        this._$afterInsert?.push(currAcc);
+      });
+    } else {
+      this._$beforeUpdate?.push({ curr: currAcc, prev: prevAcc });
+
+      this._db.put(key, currAcc).then((r) => {
+        if (!r) return;
+        this._$afterUpdate?.push({ curr: currAcc, prev: prevAcc });
+      });
+    }
+  }
+  override get(key: KEY): Readonly<VALUE> {
+    return this._db.get(key) ?? this.init.seed;
   }
 }
 
 export namespace Aggregate {
   export type Init<
-    TABLE extends Table.AnyTable,
+    TABLE extends SourceTable.AnySourceTable,
     VALUE extends Record<string, any>,
     KEY extends Key,
-    ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+    ROW extends SourceTable.InferRow<TABLE> = SourceTable.InferRow<TABLE>,
   > = {
     env: RootDatabase;
     table: TABLE;
     name: string;
-    seed: VALUE;
-    groupBy: (row: ROW) => KEY;
-    reducer: (acc: VALUE, curr?: ROW, prev?: ROW) => VALUE;
+    seed: Readonly<VALUE>;
+    groupBy: (row: Readonly<ROW>) => KEY;
+    reducer: (
+      acc: Readonly<VALUE>,
+      curr?: Readonly<ROW>,
+      prev?: Readonly<ROW>,
+    ) => Readonly<VALUE>;
   };
 }
