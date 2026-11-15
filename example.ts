@@ -3,6 +3,7 @@ import {} from "bun";
 import { open } from "lmdb";
 import { Index } from "./src/table-index";
 import { Aggregate } from "./src/aggregate";
+import { SystemTable } from "./src/system-table";
 
 try {
   await Bun.file("test.mdb").unlink();
@@ -14,12 +15,15 @@ const users = new Table<string, { email: string; name: string; age: number }>({
   env,
   name: "users",
 });
+
 const byAge = new Index({
   env,
   table: users,
   name: "byAge",
   keySelector: (curr) => curr.age,
+  valueSelector: (curr) => curr,
 });
+
 const maxAgeAgg = new Aggregate({
   env,
   table: users,
@@ -35,18 +39,29 @@ const maxAgeAgg = new Aggregate({
   },
 });
 
+console.time("write");
 await env.transaction(() => {
   users.insert("bbb@g", { email: "bbb@g", name: "ambic", age: 42 });
   users.insert("aaa@g", { email: "aaa@g", name: "sofiane", age: 53 });
   users.insert("ddd@g", { email: "ddd@g", name: "sofiane", age: 40 });
   users.insert("eee@g", { email: "eee@g", name: "zrezem", age: 22 });
   users.insert("vvv@g", { email: "vvv@g", name: "ambic", age: 22 });
+  for (let i = 1; i <= 100_000; i++) {
+    users.insert(`${i}@g`, { email: `${i}@g`, name: `${i}name`, age: i });
+  }
 });
+console.timeEnd("write");
+for (const v of byAge.equal(22)) {
+}
 
-console.time("");
+console.time("read");
 
-for (const v of byAge.equal(53)) {
+for (const v of byAge.equal(22)) {
   console.log(v);
 }
 
-console.timeEnd("");
+console.timeEnd("read");
+
+for (const v of SystemTable.getInstance(env).all()) {
+  console.log(v);
+}

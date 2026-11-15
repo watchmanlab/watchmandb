@@ -43,7 +43,7 @@ export class Table<
       sharedStructuresKey: Symbol.for(this._name),
     });
 
-    SystemTable.getInstance(env).register(this);
+    // SystemTable.getInstance(env).register(this);
   }
 
   [Symbol.iterator]() {

@@ -1,6 +1,6 @@
 import { Database, RootDatabase } from "lmdb";
 
-import { listen } from "@watchmanlab/stream";
+import { fromIterable, listen } from "@watchmanlab/stream";
 import { Table } from "./table";
 
 export class SystemTable {
@@ -24,6 +24,9 @@ export class SystemTable {
   }
   getStats(table: Table.AnyTable): SystemTable.Stats {
     return this._db.get(table.name) ?? { size: 0 };
+  }
+  all() {
+    return fromIterable(this._db.getRange());
   }
   private static instances: Map<RootDatabase, SystemTable> = new Map();
   static getInstance(env: RootDatabase) {
