@@ -1,23 +1,85 @@
 import {
   fromIterable,
   listen,
+  map,
   Source,
+  Stream,
   Terminate,
   terminate,
   TerminateReason,
 } from "@watchmanlab/stream";
-import type { Key } from "lmdb";
-import { SourceTable } from "./source-table";
+import type { Database, Key, RootDatabase } from "lmdb";
+import { SystemTable } from "./system-table";
 
 export class Table<
   ROW extends Record<string, any>,
   KEY extends Key,
   TX extends boolean = false,
-> extends SourceTable<ROW, KEY> {
+> implements Iterable<ROW> {
+  private _name: string;
+  private _env: RootDatabase;
+  private _db: Database<Readonly<ROW>>;
+  private _$beforeInsert?: Stream<Readonly<ROW>>;
+  private _$afterInsert?: Stream<Readonly<ROW>>;
+  private _$beforeUpdate?: Stream<{
+    curr: Readonly<ROW>;
+    prev: Readonly<ROW>;
+  }>;
+  private _$afterUpdate?: Stream<{
+    curr: Readonly<ROW>;
+    prev: Readonly<ROW>;
+  }>;
+  private _$beforeDelete?: Stream<Readonly<ROW>>;
+  private _$afterDelete?: Stream<Readonly<ROW>>;
   constructor(private init: Table.Init<ROW, KEY>) {
-    super(init);
+    const { name, env } = init;
+    this._name = name;
+    this._env = env;
+    this._db = env.openDB({
+      name: this._name,
+      sharedStructuresKey: Symbol.for(this._name),
+    });
+
+    SystemTable.getInstance(env).register(this);
   }
 
+  [Symbol.iterator]() {
+    return this.all()[Symbol.iterator]();
+  }
+  get name(): string {
+    return this._name;
+  }
+  get stats(): SystemTable.Stats {
+    return SystemTable.getInstance(this._env).getStats(this);
+  }
+  get $beforeInsert(): Source<Readonly<ROW>> {
+    return Source.from((this._$beforeInsert ??= new Stream()));
+  }
+  get $afterInsert(): Source<Readonly<ROW>> {
+    return Source.from((this._$afterInsert ??= new Stream()));
+  }
+  get $beforeUpdate(): Source<{
+    curr: Readonly<ROW>;
+    prev: Readonly<ROW>;
+  }> {
+    return Source.from((this._$beforeUpdate ??= new Stream()));
+  }
+  get $afterUpdate(): Source<{ curr: Readonly<ROW>; prev: Readonly<ROW> }> {
+    return Source.from((this._$afterUpdate ??= new Stream()));
+  }
+  get $beforeDelete(): Source<Readonly<ROW>> {
+    return Source.from((this._$beforeDelete ??= new Stream()));
+  }
+  get $afterDelete(): Source<Readonly<ROW>> {
+    return Source.from((this._$afterDelete ??= new Stream()));
+  }
+
+  get(key: KEY) {
+    return this._db.get(key);
+  }
+  all(): Source<ROW> {
+    return fromIterable(this._db.getRange()).pipe(map((e) => e.value));
+  }
   insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
       return this._insert(row) as never;
@@ -114,16 +176,15 @@ export namespace Table {
 
   export type InferRow<TABLE extends AnyTable> =
     TABLE extends Table<infer R, any, any> ? R : never;
-  export type InferPrimaryKey<TABLE extends AnyTable> =
+  export type InferKey<TABLE extends AnyTable> =
     TABLE extends Table<any, infer P, any> ? P : never;
   export type InferTable<DEF extends AnyDefinition> =
     DEF extends Definition<infer ROW, infer KEY> ? Table<ROW, KEY> : never;
 
-  export type Init<
-    ROW extends Record<string, any>,
-    KEY extends Key,
-  > = SourceTable.Init & {
-    keySelector: (value: ROW) => KEY;
+  export type Init<ROW extends Record<string, any>, KEY extends Key> = {
+    name: string;
+    env: RootDatabase;
+    keySelector: (row: ROW) => KEY;
   };
 
   export type Definition<

@@ -1,18 +1,26 @@
 import { Key, RootDatabase } from "lmdb";
 import { listen } from "@watchmanlab/stream";
-import { SourceTable } from "./source-table";
+
 import { isDeepEqual } from "./utils";
+import { Table } from "./table";
 
 export class Aggregate<
-  TABLE extends SourceTable.AnySourceTable,
-  VALUE extends Record<string, any>,
+  TABLE extends Table.AnyTable,
+  ROW extends Record<string, any>,
   KEY extends Key,
-  ROW extends SourceTable.InferRow<TABLE> = SourceTable.InferRow<TABLE>,
-> extends SourceTable<VALUE, KEY> {
-  constructor(private init: Aggregate.Init<TABLE, VALUE, KEY, ROW>) {
+  SOURCE_ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
+> {
+  private _table: Table<ROW, KEY>;
+  constructor(private init: Aggregate.Init<TABLE, ROW, KEY, SOURCE_ROW>) {
     const { env, name, table } = init;
 
-    super({ env, name: `${table.name}:${name}` });
+    this._table = new Table({
+      env,
+      name: `${table.name}:${name}`,
+      keySelector(value) {
+        return;
+      },
+    });
 
     this.init.seed = Object.freeze(init.seed);
 
@@ -23,7 +31,7 @@ export class Aggregate<
     table.$beforeDelete.pipe(listen((prev) => this._delete(prev)));
   }
 
-  protected _insert(curr: ROW) {
+  protected _insert(curr: SOURCE_ROW) {
     const currKey = this.init.groupBy(curr);
     const prevAcc = this._db.get(currKey);
     const currAcc = this.init.reducer(
@@ -35,7 +43,7 @@ export class Aggregate<
     this._commit(currKey, currAcc, prevAcc);
   }
 
-  protected _update(curr: ROW, prev: ROW) {
+  protected _update(curr: SOURCE_ROW, prev: SOURCE_ROW) {
     const prevKey = this.init.groupBy(prev);
     const currKey = this.init.groupBy(curr);
 
@@ -51,7 +59,7 @@ export class Aggregate<
     this._commit(currKey, currAcc, prevAcc);
   }
 
-  protected _delete(prev: ROW) {
+  protected _delete(prev: SOURCE_ROW) {
     const key = this.init.groupBy(prev);
     const prevAcc = this._db.get(key);
     if (!prevAcc) return;
@@ -61,56 +69,41 @@ export class Aggregate<
     this._commit(key, currAcc, prevAcc);
   }
 
-  private _commit(key: KEY, currAcc: VALUE, prevAcc?: VALUE) {
+  private _commit(key: KEY, currAcc: ROW, prevAcc?: ROW) {
     if (isDeepEqual(currAcc, this.init.seed)) {
       if (!prevAcc) return;
 
-      this._$beforeDelete?.push(prevAcc);
-
-      this._db.remove(key).then((r) => {
-        if (!r) return;
-        this._$afterDelete?.push(prevAcc);
-      });
+      //delete
       return;
     }
 
     if (!prevAcc) {
-      this._$beforeInsert?.push(currAcc);
-
-      this._db.put(key, currAcc).then((r) => {
-        if (!r) return;
-        this._$afterInsert?.push(currAcc);
-      });
+      //insert
     } else {
-      this._$beforeUpdate?.push({ curr: currAcc, prev: prevAcc });
-
-      this._db.put(key, currAcc).then((r) => {
-        if (!r) return;
-        this._$afterUpdate?.push({ curr: currAcc, prev: prevAcc });
-      });
+      //update
     }
   }
-  override get(key: KEY): Readonly<VALUE> {
+  get(key: KEY): Readonly<ROW> {
     return this._db.get(key) ?? this.init.seed;
   }
 }
 
 export namespace Aggregate {
   export type Init<
-    TABLE extends SourceTable.AnySourceTable,
-    VALUE extends Record<string, any>,
+    TABLE extends Table.AnyTable,
+    ROW extends Record<string, any>,
     KEY extends Key,
-    ROW extends SourceTable.InferRow<TABLE> = SourceTable.InferRow<TABLE>,
+    SOURCE_ROW extends Table.InferRow<TABLE> = Table.InferRow<TABLE>,
   > = {
     env: RootDatabase;
     table: TABLE;
     name: string;
-    seed: Readonly<VALUE>;
-    groupBy: (row: Readonly<ROW>) => KEY;
+    seed: Readonly<ROW>;
+    groupBy: (row: Readonly<SOURCE_ROW>) => KEY;
     reducer: (
-      acc: Readonly<VALUE>,
-      curr?: Readonly<ROW>,
-      prev?: Readonly<ROW>,
-    ) => Readonly<VALUE>;
+      acc: Readonly<ROW>,
+      curr?: Readonly<SOURCE_ROW>,
+      prev?: Readonly<SOURCE_ROW>,
+    ) => Readonly<ROW>;
   };
 }
