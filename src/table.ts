@@ -18,20 +18,23 @@ export class Table<
 > implements Iterable<ROW> {
   private _name: string;
   private _env: RootDatabase;
-  private _db: Database<Readonly<ROW>>;
-  private _$beforeInsert?: Stream<Readonly<ROW>>;
-  private _$afterInsert?: Stream<Readonly<ROW>>;
+  private _db: Database<Readonly<ROW>, KEY>;
+
+  private _$beforeInsert?: Stream<{ key: KEY; curr: Readonly<ROW> }>;
+  private _$afterInsert?: Stream<{ key: KEY; curr: Readonly<ROW> }>;
   private _$beforeUpdate?: Stream<{
+    key: KEY;
     curr: Readonly<ROW>;
     prev: Readonly<ROW>;
   }>;
   private _$afterUpdate?: Stream<{
+    key: KEY;
     curr: Readonly<ROW>;
     prev: Readonly<ROW>;
   }>;
-  private _$beforeDelete?: Stream<Readonly<ROW>>;
-  private _$afterDelete?: Stream<Readonly<ROW>>;
-  constructor(private init: Table.Init<ROW, KEY>) {
+  private _$beforeDelete?: Stream<{ key: KEY; prev: Readonly<ROW> }>;
+  private _$afterDelete?: Stream<{ key: KEY; prev: Readonly<ROW> }>;
+  constructor(private init: Table.Init) {
     const { name, env } = init;
     this._name = name;
     this._env = env;
@@ -52,25 +55,30 @@ export class Table<
   get stats(): SystemTable.Stats {
     return SystemTable.getInstance(this._env).getStats(this);
   }
-  get $beforeInsert(): Source<Readonly<ROW>> {
+  get $beforeInsert(): Source<{ key: KEY; curr: Readonly<ROW> }> {
     return Source.from((this._$beforeInsert ??= new Stream()));
   }
-  get $afterInsert(): Source<Readonly<ROW>> {
+  get $afterInsert(): Source<{ key: KEY; curr: Readonly<ROW> }> {
     return Source.from((this._$afterInsert ??= new Stream()));
   }
   get $beforeUpdate(): Source<{
+    key: KEY;
     curr: Readonly<ROW>;
     prev: Readonly<ROW>;
   }> {
     return Source.from((this._$beforeUpdate ??= new Stream()));
   }
-  get $afterUpdate(): Source<{ curr: Readonly<ROW>; prev: Readonly<ROW> }> {
+  get $afterUpdate(): Source<{
+    key: KEY;
+    curr: Readonly<ROW>;
+    prev: Readonly<ROW>;
+  }> {
     return Source.from((this._$afterUpdate ??= new Stream()));
   }
-  get $beforeDelete(): Source<Readonly<ROW>> {
+  get $beforeDelete(): Source<{ key: KEY; prev: Readonly<ROW> }> {
     return Source.from((this._$beforeDelete ??= new Stream()));
   }
-  get $afterDelete(): Source<Readonly<ROW>> {
+  get $afterDelete(): Source<{ key: KEY; prev: Readonly<ROW> }> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
 
@@ -80,25 +88,25 @@ export class Table<
   all(): Source<ROW> {
     return fromIterable(this._db.getRange()).pipe(map((e) => e.value));
   }
-  insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
+  insert(key: KEY, row: ROW): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
-      return this._insert(row) as never;
+      return this._insert(key, row) as never;
     } else {
-      return this._db.transaction(() => this._insert(row)) as never;
+      return this._db.transaction(() => this._insert(key, row)) as never;
     }
   }
-  update(row: ROW): TX extends true ? boolean : Promise<boolean> {
+  update(key: KEY, row: ROW): TX extends true ? boolean : Promise<boolean> {
     if (this._isInsideTransaction()) {
-      return this._update(row) as never;
+      return this._update(key, row) as never;
     } else {
-      return this._db.transaction(() => this._update(row)) as never;
+      return this._db.transaction(() => this._update(key, row)) as never;
     }
   }
-  upsert(row: ROW): TX extends true ? boolean : Promise<boolean> {
-    if (this._db.doesExist(this.init.keySelector(row))) {
-      return this.update(row) as never;
+  upsert(key: KEY, row: ROW): TX extends true ? boolean : Promise<boolean> {
+    if (this._db.doesExist(key)) {
+      return this.update(key, row) as never;
     } else {
-      return this.insert(row) as never;
+      return this.insert(key, row) as never;
     }
   }
   delete(key: KEY): TX extends true ? boolean : Promise<boolean> {
@@ -116,31 +124,27 @@ export class Table<
     }
   }
 
-  private _insert(row: ROW): boolean {
-    const key = this.init.keySelector(row);
-
+  private _insert(key: KEY, curr: ROW): boolean {
     if (this._db.doesExist(key)) return false;
 
-    this._$beforeInsert?.push(row);
+    this._$beforeInsert?.push({ key, curr });
 
-    this._db.put(key, row).then((r) => {
+    this._db.put(key, curr).then((r) => {
       if (!r) return;
-      this._$afterInsert?.push(row);
+      this._$afterInsert?.push({ key, curr });
     });
 
     return true;
   }
-  private _update(row: ROW): boolean {
-    const key = this.init.keySelector(row);
-
+  private _update(key: KEY, curr: ROW): boolean {
     const prev = this._db.get(key);
 
     if (!prev) return false;
 
-    this._$beforeUpdate?.push({ curr: row, prev });
+    this._$beforeUpdate?.push({ key, curr, prev });
 
-    this._db.put(key, row).then((r) => {
-      if (r) this._$afterUpdate?.push({ curr: row, prev });
+    this._db.put(key, curr).then((r) => {
+      if (r) this._$afterUpdate?.push({ key, curr, prev });
     });
 
     return true;
@@ -149,11 +153,11 @@ export class Table<
     const prev = this._db.get(key);
     if (!prev) return false;
 
-    this._$beforeDelete?.push(prev);
+    this._$beforeDelete?.push({ key, prev });
 
     this._db.remove(key).then((r) => {
       if (!r) return;
-      this._$afterDelete?.push(prev);
+      this._$afterDelete?.push({ key, prev });
     });
     return true;
   }
@@ -164,31 +168,15 @@ export class Table<
   }
 }
 
-export function defineTable<ROW extends Record<string, any>, KEY extends Key>(
-  config: Table.Definition<ROW, KEY>,
-): Table.Definition<ROW, KEY> {
-  return config;
-}
-
 export namespace Table {
   export type AnyTable = Table<any, any, any>;
-  export type AnyDefinition = Definition<any, any>;
-
   export type InferRow<TABLE extends AnyTable> =
     TABLE extends Table<infer R, any, any> ? R : never;
   export type InferKey<TABLE extends AnyTable> =
     TABLE extends Table<any, infer P, any> ? P : never;
-  export type InferTable<DEF extends AnyDefinition> =
-    DEF extends Definition<infer ROW, infer KEY> ? Table<ROW, KEY> : never;
 
-  export type Init<ROW extends Record<string, any>, KEY extends Key> = {
+  export type Init = {
     name: string;
     env: RootDatabase;
-    keySelector: (row: ROW) => KEY;
   };
-
-  export type Definition<
-    ROW extends Record<string, any>,
-    KEY extends Key,
-  > = Omit<Init<ROW, KEY>, "env" | "name">;
 }

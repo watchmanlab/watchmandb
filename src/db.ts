@@ -7,7 +7,7 @@ import z from "zod";
 export type Config = {
   path: string;
   tables: {
-    [K: string]: Table.AnyDefinition & { indexes: Index.Definition<any, any> };
+    [K: string]: Table.Init & { indexes: Index.Definition<any, any> };
   };
 };
 

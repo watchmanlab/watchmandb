@@ -14,26 +14,20 @@ export class Aggregate<
   constructor(private init: Aggregate.Init<TABLE, ROW, KEY, SOURCE_ROW>) {
     const { env, name, table } = init;
 
-    this._table = new Table({
-      env,
-      name: `${table.name}:${name}`,
-      keySelector(value) {
-        return;
-      },
-    });
+    this._table = new Table({ env, name: `${table.name}:${name}` });
 
     this.init.seed = Object.freeze(init.seed);
 
-    table.$beforeInsert.pipe(listen((curr) => this._insert(curr)));
+    table.$beforeInsert.pipe(listen(({ curr }) => this._insert(curr)));
     table.$beforeUpdate.pipe(
       listen(({ curr, prev }) => this._update(curr, prev)),
     );
-    table.$beforeDelete.pipe(listen((prev) => this._delete(prev)));
+    table.$beforeDelete.pipe(listen(({ prev }) => this._delete(prev)));
   }
 
-  protected _insert(curr: SOURCE_ROW) {
+  private _insert(curr: SOURCE_ROW) {
     const currKey = this.init.groupBy(curr);
-    const prevAcc = this._db.get(currKey);
+    const prevAcc = this._table.get(currKey);
     const currAcc = this.init.reducer(
       prevAcc ?? this.init.seed,
       curr,
@@ -43,7 +37,7 @@ export class Aggregate<
     this._commit(currKey, currAcc, prevAcc);
   }
 
-  protected _update(curr: SOURCE_ROW, prev: SOURCE_ROW) {
+  private _update(curr: SOURCE_ROW, prev: SOURCE_ROW) {
     const prevKey = this.init.groupBy(prev);
     const currKey = this.init.groupBy(curr);
 
@@ -53,15 +47,15 @@ export class Aggregate<
       return;
     }
 
-    const prevAcc = this._db.get(currKey);
+    const prevAcc = this._table.get(currKey);
     const currAcc = this.init.reducer(prevAcc ?? this.init.seed, curr, prev);
 
     this._commit(currKey, currAcc, prevAcc);
   }
 
-  protected _delete(prev: SOURCE_ROW) {
+  private _delete(prev: SOURCE_ROW) {
     const key = this.init.groupBy(prev);
-    const prevAcc = this._db.get(key);
+    const prevAcc = this._table.get(key);
     if (!prevAcc) return;
 
     const currAcc = this.init.reducer(prevAcc, undefined, prev);
@@ -73,18 +67,21 @@ export class Aggregate<
     if (isDeepEqual(currAcc, this.init.seed)) {
       if (!prevAcc) return;
 
-      //delete
+      this._table.delete(key);
       return;
     }
 
     if (!prevAcc) {
-      //insert
+      this._table.insert(key, currAcc);
     } else {
-      //update
+      this._table.update(key, currAcc);
     }
   }
+  get table(): Table<ROW, KEY, false> {
+    return this._table;
+  }
   get(key: KEY): Readonly<ROW> {
-    return this._db.get(key) ?? this.init.seed;
+    return this._table.get(key) ?? this.init.seed;
   }
 }
 
