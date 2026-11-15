@@ -4,12 +4,24 @@ import { Database, Key, RootDatabase } from "lmdb";
 export class Write<INPUT extends Consumable<Command>> extends Source<
   Promise<boolean>
 > {
-  private static dbs = new Map<string, Database>();
+  private static envs = new Map<RootDatabase, Map<string, Database>>();
+
+  private dbs: Map<string, Database>;
   constructor(
     readonly $input: INPUT,
     private env: RootDatabase,
   ) {
     super();
+
+    this.dbs = Write.envs.get(env) ?? Write.envs.set(env, new Map()).get(env)!;
+  }
+  private getDb(table: string): Database {
+    let db = this.dbs.get(table);
+    if (!db) {
+      db = this.env.openDB({ name: table });
+      this.dbs.set(table, db);
+    }
+    return db;
   }
   override consume(
     handler: Consumer.Handler<Promise<boolean>>,
@@ -31,11 +43,7 @@ export class Write<INPUT extends Consumable<Command>> extends Source<
 
     const input$ = this.$input.consume(
       (_, cmd) => {
-        const db =
-          Write.dbs.get(cmd.table) ??
-          Write.dbs
-            .set(cmd.table, this.env.openDB({ name: cmd.table }))
-            .get(cmd.table)!;
+        const db = this.getDb(cmd.table);
 
         switch (cmd.type) {
           case "insert":
