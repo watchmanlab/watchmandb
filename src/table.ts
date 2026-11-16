@@ -9,7 +9,6 @@ import {
   TerminateReason,
 } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
-import { SystemTable } from "./system-table";
 
 export class Table<
   KEY extends Key,
@@ -42,8 +41,6 @@ export class Table<
       name: this._name,
       sharedStructuresKey: Symbol.for(this._name),
     });
-
-    // SystemTable.getInstance(env).register(this);
   }
 
   [Symbol.iterator]() {
@@ -52,9 +49,7 @@ export class Table<
   get name(): string {
     return this._name;
   }
-  get stats(): SystemTable.Stats {
-    return SystemTable.getInstance(this._env).getStats(this);
-  }
+
   get $beforeInsert(): Source<{ key: KEY; curr: Readonly<VALUE> }> {
     return Source.from((this._$beforeInsert ??= new Stream()));
   }

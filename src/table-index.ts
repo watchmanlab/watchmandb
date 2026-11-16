@@ -23,7 +23,7 @@ export class Index<
   constructor(private init: Index.Init<SOURCE, KEY, VALUE>) {
     const { name, env, table } = init;
 
-    this._table = new Table({ env, name: `${table.name}:${name}` });
+    this._table = new Table({ env, name: `${table.name}:${name}:index` });
 
     table.$beforeInsert.pipe(
       listen(({ key, curr }) => this._insert(key, curr)),
@@ -158,8 +158,8 @@ export namespace Index {
     name: string;
     env: RootDatabase;
     table: SOURCE;
-    keySelector: (curr: Table.InferValue<SOURCE>) => KEY;
-    valueSelector?: (curr: Table.InferValue<SOURCE>) => VALUE;
+    keySelector: (row: Table.InferValue<SOURCE>) => KEY;
+    valueSelector?: (row: Table.InferValue<SOURCE>) => VALUE;
     unique?: boolean;
   };
 }

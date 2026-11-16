@@ -3,7 +3,7 @@ import {} from "bun";
 import { open } from "lmdb";
 import { Index } from "./src/table-index";
 import { Aggregate } from "./src/aggregate";
-import { SystemTable } from "./src/system-table";
+import { View } from "./src/view";
 
 try {
   await Bun.file("test.mdb").unlink();
@@ -16,6 +16,14 @@ const users = new Table<string, { email: string; name: string; age: number }>({
   name: "users",
 });
 
+const olders = new View({
+  env,
+  table: users,
+  name: "olders",
+  keySelector: (v) => v.email,
+  map: (v) => v,
+  filter: (v) => v.age <= 3,
+});
 const byAge = new Index({
   env,
   table: users,
@@ -51,12 +59,13 @@ await env.transaction(() => {
   }
 });
 console.timeEnd("write");
-for (const v of byAge.equal(22)) {
+
+for (const v of olders.all()) {
 }
 
 console.time("read");
 
-for (const v of byAge.equal(22)) {
+for (const v of olders.all()) {
   console.log(v);
 }
 

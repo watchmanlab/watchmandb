@@ -1,6 +1,5 @@
 import { Key, RootDatabase } from "lmdb";
 import { listen } from "@watchmanlab/stream";
-
 import { isDeepEqual } from "./utils";
 import { Table } from "./table";
 
@@ -14,7 +13,7 @@ export class Aggregate<
   constructor(private init: Aggregate.Init<TABLE, KEY, VALUE, SOURCE_VALUE>) {
     const { env, name, table } = init;
 
-    this._table = new Table({ env, name: `${table.name}:${name}` });
+    this._table = new Table({ env, name: `${table.name}:${name}:agg` });
 
     this.init.seed = Object.freeze(init.seed);
 
