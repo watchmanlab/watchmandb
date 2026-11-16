@@ -15,24 +15,24 @@ export class Table<
   VALUE,
   TX extends boolean = false,
 > implements Iterable<VALUE> {
-  private _name: string;
-  private _env: RootDatabase;
-  private _db: Database<Readonly<VALUE>, KEY>;
+  protected _name: string;
+  protected _env: RootDatabase;
+  protected _db: Database<Readonly<VALUE>, KEY>;
 
-  private _$beforeInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
-  private _$afterInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
-  private _$beforeUpdate?: Stream<{
+  protected _$beforeInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
+  protected _$afterInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
+  protected _$beforeUpdate?: Stream<{
     key: KEY;
     curr: Readonly<VALUE>;
     prev: Readonly<VALUE>;
   }>;
-  private _$afterUpdate?: Stream<{
+  protected _$afterUpdate?: Stream<{
     key: KEY;
     curr: Readonly<VALUE>;
     prev: Readonly<VALUE>;
   }>;
-  private _$beforeDelete?: Stream<{ key: KEY; prev: Readonly<VALUE> }>;
-  private _$afterDelete?: Stream<{ key: KEY; prev: Readonly<VALUE> }>;
+  protected _$beforeDelete?: Stream<{ key: KEY; prev: Readonly<VALUE> }>;
+  protected _$afterDelete?: Stream<{ key: KEY; prev: Readonly<VALUE> }>;
   constructor(init: Table.Init) {
     const { name, env } = init;
     this._name = name;
@@ -111,14 +111,14 @@ export class Table<
       return this._db.transaction(() => this._delete(key)) as never;
     }
   }
-  private _isInsideTransaction(): boolean {
+  protected _isInsideTransaction(): boolean {
     try {
       return this._db.getWriteTxnId() > 0;
     } catch (error) {
       return false;
     }
   }
-  private _insert(key: KEY, curr: VALUE): boolean {
+  protected _insert(key: KEY, curr: VALUE): boolean {
     if (this._db.doesExist(key)) return false;
 
     this._$beforeInsert?.push({ key, curr });
@@ -130,7 +130,7 @@ export class Table<
 
     return true;
   }
-  private _update(key: KEY, curr: VALUE): boolean {
+  protected _update(key: KEY, curr: VALUE): boolean {
     const prev = this._db.get(key);
 
     if (!prev) return false;
@@ -143,7 +143,7 @@ export class Table<
 
     return true;
   }
-  private _delete(key: KEY): boolean {
+  protected _delete(key: KEY): boolean {
     const prev = this._db.get(key);
     if (!prev) return false;
 
