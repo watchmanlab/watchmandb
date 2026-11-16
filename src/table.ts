@@ -123,7 +123,6 @@ export class Table<
       return false;
     }
   }
-
   private _insert(key: KEY, curr: VALUE): boolean {
     if (this._db.doesExist(key)) return false;
 

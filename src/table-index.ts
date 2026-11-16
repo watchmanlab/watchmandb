@@ -25,7 +25,6 @@ export class Index<
 
     this._table = new Table({ env, name: `${table.name}:${name}` });
 
-    this._init();
     table.$beforeInsert.pipe(
       listen(({ key, curr }) => this._insert(key, curr)),
     );
@@ -36,15 +35,10 @@ export class Index<
       listen(({ key, prev }) => this._delete(key, prev)),
     );
   }
-
-  private _init() {
-    // const { _table } = this;
-    // if (!_table.length || !this._db.getRange()[Symbol.iterator]().next().done)
-    //   return;
-    // this._db.transaction(() =>
-    //   _table.all().pipe(listen((value) => this._insert(value))),
-    // );
+  get table(): Table<[KEY, Table.InferKey<SOURCE>], VALUE, false> {
+    return this._table;
   }
+
   private _makeKey(
     key: SOURCE_KEY,
     value: SOURCE_VALUE,
