@@ -20,8 +20,6 @@ const olders = new View({
   env,
   table: users,
   name: "olders",
-  keySelector: (v) => v.email,
-  map: (v) => v,
   filter: (v) => v.age <= 3,
 });
 const byAge = new Index({
@@ -29,7 +27,7 @@ const byAge = new Index({
   table: users,
   name: "byAge",
   keySelector: (curr) => curr.age,
-  valueSelector: (curr) => curr,
+  includes: (curr) => curr,
 });
 
 const maxAgeAgg = new Aggregate({

@@ -61,10 +61,7 @@ export class Index<
         .next();
     }
 
-    this._table.insert(
-      newKey,
-      this.init.valueSelector?.(curr) ?? (null as VALUE),
-    );
+    this._table.insert(newKey, this.init.includes?.(curr) ?? (null as VALUE));
   }
   private _update(key: SOURCE_KEY, curr: SOURCE_VALUE, prev: SOURCE_VALUE) {
     const oldKey = this._makeKey(key, prev);
@@ -89,10 +86,7 @@ export class Index<
     }
 
     this._table.delete(oldKey);
-    this._table.insert(
-      newKey,
-      this.init.valueSelector?.(curr) ?? (null as VALUE),
-    );
+    this._table.insert(newKey, this.init.includes?.(curr) ?? (null as VALUE));
   }
   private _delete(key: SOURCE_KEY, prev: SOURCE_VALUE) {
     this._table.delete(this._makeKey(key, prev));
@@ -159,7 +153,7 @@ export namespace Index {
     env: RootDatabase;
     table: SOURCE;
     keySelector: (row: Table.InferValue<SOURCE>) => KEY;
-    valueSelector?: (row: Table.InferValue<SOURCE>) => VALUE;
+    includes?: (row: Table.InferValue<SOURCE>) => VALUE;
     unique?: boolean;
   };
 }

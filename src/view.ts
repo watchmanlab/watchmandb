@@ -13,35 +13,46 @@ export class View<
     const { name, env, table } = init;
     super({ env, name: `${table.name}:${name}:view` });
 
-    table.$beforeInsert.pipe(listen(({ curr }) => this._beforeInsert(curr)));
-    table.$beforeUpdate.pipe(
-      listen(({ curr, prev }) => this._beforeUpdate(curr, prev)),
+    table.$beforeInsert.pipe(
+      listen(({ key, curr }) => this._beforeInsert(key, curr)),
     );
-    table.$beforeDelete.pipe(listen(({ prev }) => this._beforeDelete(prev)));
+    table.$beforeUpdate.pipe(
+      listen(({ key, curr, prev }) => this._beforeUpdate(key, curr, prev)),
+    );
+    table.$beforeDelete.pipe(
+      listen(({ key, prev }) => this._beforeDelete(key, prev)),
+    );
   }
 
-  private _beforeInsert(curr: Readonly<Table.InferValue<SOURCE>>) {
+  private _beforeInsert(
+    key: Table.InferKey<SOURCE>,
+    curr: Readonly<Table.InferValue<SOURCE>>,
+  ) {
     if (this.init.filter && this.init.filter(curr) === false) return;
 
-    const newKey = this.init.keySelector(curr);
-    this.insert(newKey, this.init.map(curr));
+    const newKey = this.init.keySelector?.(curr) ?? key;
+    this.insert(newKey, this.init.map?.(curr) ?? curr);
   }
   private _beforeUpdate(
+    key: Table.InferKey<SOURCE>,
     curr: Readonly<Table.InferValue<SOURCE>>,
     prev: Readonly<Table.InferValue<SOURCE>>,
   ) {
     if (this.init.filter && this.init.filter(curr) === false) return;
 
-    const oldKey = this.init.keySelector(prev);
-    const newKey = this.init.keySelector(curr);
+    const oldKey = this.init.keySelector?.(prev) ?? key;
+    const newKey = this.init.keySelector?.(curr) ?? key;
 
     if (isDeepEqual(oldKey, newKey)) return;
 
     this.delete(oldKey);
-    this.insert(newKey, this.init.map(curr));
+    this.insert(newKey, this.init.map?.(curr) ?? curr);
   }
-  private _beforeDelete(prev: Readonly<Table.InferValue<SOURCE>>) {
-    this.delete(this.init.keySelector(prev));
+  private _beforeDelete(
+    key: Table.InferKey<SOURCE>,
+    prev: Readonly<Table.InferValue<SOURCE>>,
+  ) {
+    this.delete(this.init.keySelector?.(prev) ?? key);
   }
 }
 
@@ -50,8 +61,15 @@ export namespace View {
     name: string;
     env: RootDatabase;
     table: SOURCE;
-    keySelector: (row: Readonly<Table.InferValue<SOURCE>>) => KEY;
-    map: (row: Readonly<Table.InferValue<SOURCE>>) => VALUE;
-    filter?: (row: Readonly<Table.InferValue<SOURCE>>) => boolean;
-  };
+    keySelector?: (row: Readonly<Table.InferValue<SOURCE>>) => KEY;
+  } & (
+    | {
+        map: (row: Readonly<Table.InferValue<SOURCE>>) => VALUE;
+        filter?: (row: Readonly<Table.InferValue<SOURCE>>) => boolean;
+      }
+    | {
+        map?: (row: Readonly<Table.InferValue<SOURCE>>) => VALUE;
+        filter: (row: Readonly<Table.InferValue<SOURCE>>) => boolean;
+      }
+  );
 }
