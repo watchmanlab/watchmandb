@@ -61,7 +61,3 @@ for (const v of byAge.equal(22)) {
 }
 
 console.timeEnd("read");
-
-for (const v of SystemTable.getInstance(env).all()) {
-  console.log(v);
-}
