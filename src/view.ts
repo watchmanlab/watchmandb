@@ -6,7 +6,7 @@ import { isDeepEqual } from "./utils";
 export class View<
   SOURCE extends Table.AnyTable,
   KEY extends Key,
-  VALUE,
+  VALUE = Table.InferValue<SOURCE>,
   TX extends boolean = false,
 > extends Table<never, KEY, VALUE, TX> {
   constructor(private init: View.Init<SOURCE, KEY, VALUE>) {

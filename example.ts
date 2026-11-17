@@ -25,8 +25,12 @@ const olders = new View({
   env,
   table: users,
   name: "olders",
+  map(row) {
+    return { age: row.age };
+  },
   filter: (v) => v.age <= 3,
 });
+
 const byAge = new Index({
   env,
   table: users,
