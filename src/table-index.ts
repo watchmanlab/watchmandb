@@ -15,7 +15,7 @@ export class Index<
   KEY extends Key,
   VALUE = KEY,
   TX extends boolean = false,
-> extends Table<[KEY, Table.InferKey<SOURCE>], VALUE> {
+> extends Table<never, [KEY, Table.InferKey<SOURCE>], VALUE> {
   constructor(private init: Index.Init<SOURCE, KEY, VALUE>) {
     const { name, env, table } = init;
     super({ env, name: `index:${table.name}:${name}` });

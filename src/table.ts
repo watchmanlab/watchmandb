@@ -9,17 +9,18 @@ import {
   TerminateReason,
 } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
-import { View } from "./view";
+import { SchemaProvider } from "./schema-provider";
 
 export class Table<
+  SCHEMA extends SchemaProvider.AnySchemaProvider,
   KEY extends Key,
-  VALUE,
+  VALUE = SchemaProvider.InferOutput<SCHEMA>,
   TX extends boolean = false,
 > implements Iterable<VALUE> {
   protected _name: string;
   protected _env: RootDatabase;
+  protected _schema?: SCHEMA;
   protected _db: Database<Readonly<VALUE>, KEY>;
-  // protected _events?: Stream<{type:"";  key: KEY; curr: Readonly<VALUE> }>
   protected _$beforeInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
   protected _$afterInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
   protected _$beforeUpdate?: Stream<{
@@ -34,10 +35,11 @@ export class Table<
   }>;
   protected _$beforeDelete?: Stream<{ key: KEY; prev: Readonly<VALUE> }>;
   protected _$afterDelete?: Stream<{ key: KEY; prev: Readonly<VALUE> }>;
-  constructor(init: Table.Init) {
-    const { name, env } = init;
+  constructor(init: Table.Init<SCHEMA>) {
+    const { name, env, schema } = init;
     this._name = name;
     this._env = env;
+    this._schema = schema;
     this._db = env.openDB({
       name: `table:${this._name}`,
       sharedStructuresKey: Symbol.for(this._name),
@@ -48,6 +50,9 @@ export class Table<
   }
   get name(): string {
     return this._name;
+  }
+  get schema(): SCHEMA | undefined {
+    return this._schema;
   }
   get $beforeInsert(): Source<{ key: KEY; curr: Readonly<VALUE> }> {
     return Source.from((this._$beforeInsert ??= new Stream()));
@@ -117,6 +122,8 @@ export class Table<
     }
   }
   protected _insert(key: KEY, curr: VALUE): boolean {
+    this._schema?.parse(curr);
+
     if (this._db.doesExist(key)) return false;
 
     this._$beforeInsert?.push({ key, curr });
@@ -129,6 +136,8 @@ export class Table<
     return true;
   }
   protected _update(key: KEY, curr: VALUE): boolean {
+    this._schema?.parse(curr);
+
     const prev = this._db.get(key);
 
     if (!prev) return false;
@@ -161,14 +170,15 @@ export class Table<
 }
 
 export namespace Table {
-  export type AnyTable = Table<any, any, any>;
+  export type AnyTable = Table<any, any, any, any>;
   export type InferValue<TABLE extends AnyTable> =
-    TABLE extends Table<any, infer V, any> ? V : never;
+    TABLE extends Table<any, any, infer V, any> ? V : never;
   export type InferKey<TABLE extends AnyTable> =
-    TABLE extends Table<infer K, any, any> ? K : never;
+    TABLE extends Table<any, infer K, any, any> ? K : never;
 
-  export type Init = {
+  export type Init<SCHEMA extends SchemaProvider.AnySchemaProvider> = {
     name: string;
     env: RootDatabase;
+    schema?: SCHEMA;
   };
 }

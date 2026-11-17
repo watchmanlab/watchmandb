@@ -8,7 +8,7 @@ export class Aggregate<
   KEY extends Key,
   VALUE,
   TX extends boolean = false,
-> extends Table<KEY, VALUE, TX> {
+> extends Table<never, KEY, VALUE, TX> {
   constructor(private init: Aggregate.Init<TABLE, KEY, VALUE>) {
     const { env, name, table } = init;
     super({ env, name: `agg:${table.name}:${name}` });

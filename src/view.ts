@@ -8,7 +8,7 @@ export class View<
   KEY extends Key,
   VALUE,
   TX extends boolean = false,
-> extends Table<KEY, VALUE, TX> {
+> extends Table<never, KEY, VALUE, TX> {
   constructor(private init: View.Init<SOURCE, KEY, VALUE>) {
     const { name, env, table } = init;
     super({ env, name: `view:${table.name}:${name}` });

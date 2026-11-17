@@ -4,6 +4,8 @@ import { open } from "lmdb";
 import { Index } from "./src/table-index";
 import { Aggregate } from "./src/aggregate";
 import { View } from "./src/view";
+import { zodSchema } from "./src/zod-schema";
+import z from "zod";
 
 try {
   await Bun.file("test.mdb").unlink();
@@ -11,9 +13,12 @@ try {
 } catch (error) {}
 
 const env = open("test.mdb", {});
-const users = new Table<string, { email: string; name: string; age: number }>({
+const users = new Table({
   env,
   name: "users",
+  schema: zodSchema(
+    z.object({ email: z.string(), name: z.string(), age: z.number() }),
+  ),
 });
 
 const olders = new View({

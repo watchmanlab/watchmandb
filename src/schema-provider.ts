@@ -4,6 +4,7 @@ export interface SchemaProvider<SCHEMA, OUT> {
 }
 
 export namespace SchemaProvider {
+  export type AnySchemaProvider = SchemaProvider<any, any>;
   export type InferOutput<SCHEMA extends SchemaProvider<any, any>> =
     SCHEMA extends SchemaProvider<any, infer O> ? O : never;
 }
