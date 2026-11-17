@@ -11,7 +11,7 @@ export class View<
 > extends Table<KEY, VALUE, TX> {
   constructor(private init: View.Init<SOURCE, KEY, VALUE>) {
     const { name, env, table } = init;
-    super({ env, name: `${table.name}:${name}:view` });
+    super({ env, name: `view:${table.name}:${name}` });
 
     table.$beforeInsert.pipe(
       listen(({ key, curr }) => this._beforeInsert(key, curr)),

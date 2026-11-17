@@ -39,7 +39,7 @@ export class Table<
     this._name = name;
     this._env = env;
     this._db = env.openDB({
-      name: this._name,
+      name: `table:${this._name}`,
       sharedStructuresKey: Symbol.for(this._name),
     });
   }
@@ -158,11 +158,6 @@ export class Table<
       .pipe(listen((key: KEY) => this.delete(key)))
       .pipe(terminate());
   }
-  // createView<KEY extends Key, VALUE>(
-  //   init: Omit<View.Init<this, KEY, VALUE>, "env" | "table">,
-  // ) {
-  //   return new View({ ...init, env: this._env, table: this });
-  // }
 }
 
 export namespace Table {

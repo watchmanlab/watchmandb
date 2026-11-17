@@ -11,7 +11,7 @@ export class Aggregate<
 > extends Table<KEY, VALUE, TX> {
   constructor(private init: Aggregate.Init<TABLE, KEY, VALUE>) {
     const { env, name, table } = init;
-    super({ env, name: `${table.name}:${name}:agg` });
+    super({ env, name: `agg:${table.name}:${name}` });
 
     this.init.seed = Object.freeze(init.seed);
 

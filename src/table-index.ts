@@ -5,7 +5,6 @@ import {
   map,
   of,
   Source,
-  Stream,
 } from "@watchmanlab/stream";
 import { Table } from "./table";
 import { Key, RootDatabase } from "lmdb";
@@ -19,7 +18,7 @@ export class Index<
 > extends Table<[KEY, Table.InferKey<SOURCE>], VALUE> {
   constructor(private init: Index.Init<SOURCE, KEY, VALUE>) {
     const { name, env, table } = init;
-    super({ env, name: `${table.name}:${name}:index` });
+    super({ env, name: `index:${table.name}:${name}` });
 
     table.$beforeInsert.pipe(
       listen(({ key, curr }) => this._beforeInsert(key, curr)),
@@ -47,7 +46,7 @@ export class Index<
     if (this.init.unique) {
       const [colVal] = newKey;
 
-      this.equal(colVal as KEY)
+      this.eq(colVal as KEY)
         .consume((self) => {
           self.terminate("abort");
           throw new Error(`duplicate key ${String(colVal)} at ${this._name}`);
@@ -70,7 +69,7 @@ export class Index<
     if (this.init.unique) {
       const [colVal, rowId] = newKey;
 
-      this.equal(colVal as KEY)
+      this.eq(colVal as KEY)
         .consume((self, prevId) => {
           if (prevId !== rowId) {
             self.terminate("abort");
@@ -91,20 +90,20 @@ export class Index<
     this.delete(this._makeKey(key, prev));
   }
 
-  equal(key: KEY): Source<VALUE> {
+  eq(key: KEY): Source<VALUE> {
     return fromIterable(
       this._db.getRange({ start: [key], end: [key, "\xff"] }),
     ).pipe(map(({ key, value }) => value ?? key[1]));
   }
-  notEqual(key: KEY): Source<VALUE> {
-    const left = this.lessThan(key);
-    const right = this.greaterThan(key);
+  neq(key: KEY): Source<VALUE> {
+    const left = this.lt(key);
+    const right = this.gt(key);
 
     return of(left, right).pipe(flat$()) as never;
   }
   in(keys: [KEY, KEY, ...KEY[]]): Source<VALUE> {
     return fromIterable(keys)
-      .pipe(map((key) => this.equal(key)))
+      .pipe(map((key) => this.eq(key)))
       .pipe(flat$());
   }
   startWith(prefix: string): Source<VALUE> {
@@ -116,22 +115,22 @@ export class Index<
       this._db.getRange({ start: prefix, end: endPrefix }),
     ).pipe(map(({ key, value }) => value ?? key[1]));
   }
-  lessThan(key: KEY): Source<VALUE> {
+  lt(key: KEY): Source<VALUE> {
     return fromIterable(this._db.getRange({ end: key })).pipe(
       map(({ key, value }) => value ?? key[1]),
     );
   }
-  lessThanOrEqual(key: KEY): Source<VALUE> {
+  lte(key: KEY): Source<VALUE> {
     return fromIterable(this._db.getRange({ end: [key, "\xff"] })).pipe(
       map(({ key, value }) => value ?? key[1]),
     );
   }
-  greaterThan(key: KEY): Source<VALUE> {
+  gt(key: KEY): Source<VALUE> {
     return fromIterable(this._db.getRange({ start: [key, "\xff"] })).pipe(
       map(({ key, value }) => value ?? key[1]),
     );
   }
-  greaterThanOrEqual(key: KEY): Source<VALUE> {
+  gte(key: KEY): Source<VALUE> {
     return fromIterable(this._db.getRange({ start: key })).pipe(
       map(({ key, value }) => value ?? key[1]),
     );
