@@ -54,7 +54,7 @@ export class Index<
         .next();
     }
 
-    this.insert(newKey, this.init.includes?.(curr) ?? (null as VALUE));
+    this._insert(newKey, this.init.includes?.(curr) ?? (null as VALUE));
   }
   private _beforeUpdate(
     key: Table.InferKey<SOURCE>,
@@ -80,14 +80,14 @@ export class Index<
         .next();
     }
 
-    this.delete(oldKey);
-    this.insert(newKey, this.init.includes?.(curr) ?? (null as VALUE));
+    this._delete(oldKey);
+    this._insert(newKey, this.init.includes?.(curr) ?? (null as VALUE));
   }
   private _beforeDelete(
     key: Table.InferKey<SOURCE>,
     prev: Readonly<Table.InferValue<SOURCE>>,
   ) {
-    this.delete(this._makeKey(key, prev));
+    this._delete(this._makeKey(key, prev));
   }
 
   eq(key: KEY): Source<VALUE> {

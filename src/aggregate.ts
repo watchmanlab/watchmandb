@@ -6,10 +6,10 @@ import { Table } from "./table";
 export class Aggregate<
   TABLE extends Table.AnyTable,
   KEY extends Key,
-  VALUE,
+  ACC,
   TX extends boolean = false,
-> extends Table<never, KEY, VALUE, TX> {
-  constructor(private init: Aggregate.Init<TABLE, KEY, VALUE>) {
+> extends Table<never, KEY, ACC, TX> {
+  constructor(private init: Aggregate.Init<TABLE, KEY, ACC>) {
     const { env, name, table } = init;
     super({ env, name: `agg:${table.name}:${name}` });
 
@@ -63,7 +63,7 @@ export class Aggregate<
     this._commit(key, currAcc, prevAcc);
   }
 
-  private _commit(key: KEY, currAcc: VALUE, prevAcc?: VALUE) {
+  private _commit(key: KEY, currAcc: ACC, prevAcc?: ACC) {
     if (isDeepEqual(currAcc, this.init.seed)) {
       if (!prevAcc) return;
       this.delete(key);
@@ -79,16 +79,16 @@ export class Aggregate<
 }
 
 export namespace Aggregate {
-  export type Init<TABLE extends Table.AnyTable, KEY extends Key, VALUE> = {
+  export type Init<TABLE extends Table.AnyTable, KEY extends Key, ACC> = {
     env: RootDatabase;
     table: TABLE;
     name: string;
-    seed: Readonly<VALUE>;
+    seed: Readonly<ACC>;
     groupBy: (row: Readonly<Readonly<Table.InferValue<TABLE>>>) => KEY;
     reducer: (
-      acc: Readonly<VALUE>,
+      acc: Readonly<ACC>,
       curr?: Readonly<Readonly<Table.InferValue<TABLE>>>,
       prev?: Readonly<Readonly<Table.InferValue<TABLE>>>,
-    ) => Readonly<VALUE>;
+    ) => Readonly<ACC>;
   };
 }

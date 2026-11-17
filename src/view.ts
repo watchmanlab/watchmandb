@@ -31,7 +31,7 @@ export class View<
     if (this.init.filter && this.init.filter(curr) === false) return;
 
     const newKey = this.init.keySelector?.(curr) ?? key;
-    this.insert(newKey, this.init.map?.(curr) ?? curr);
+    this._insert(newKey, this.init.map?.(curr) ?? curr);
   }
   private _beforeUpdate(
     key: Table.InferKey<SOURCE>,
@@ -45,24 +45,23 @@ export class View<
 
     if (isDeepEqual(oldKey, newKey)) return;
 
-    this.delete(oldKey);
-    this.insert(newKey, this.init.map?.(curr) ?? curr);
+    this._delete(oldKey);
+    this._insert(newKey, this.init.map?.(curr) ?? curr);
   }
   private _beforeDelete(
     key: Table.InferKey<SOURCE>,
     prev: Readonly<Table.InferValue<SOURCE>>,
   ) {
-    this.delete(this.init.keySelector?.(prev) ?? key);
+    this._delete(this.init.keySelector?.(prev) ?? key);
   }
 }
 
-export function createView<
-  SOURCE extends Table.AnyTable,
+export function defineView<
+  TABLE_DEF extends Table.Definition<any>,
   KEY extends Key,
   VALUE,
->(init: Omit<View.Init<SOURCE, KEY, VALUE>, "env" | "table">) {
-  return (env: RootDatabase, table: SOURCE) =>
-    new View({ ...init, env, table } as View.Init<SOURCE, KEY, VALUE>);
+>(def: View.Definition<TABLE_DEF, KEY, VALUE>) {
+  return def;
 }
 
 export namespace View {
@@ -81,4 +80,11 @@ export namespace View {
         filter: (row: Readonly<Table.InferValue<SOURCE>>) => boolean;
       }
   );
+  export type Definition<
+    TABLE_DEF extends Table.AnyDefinition,
+    KEY extends Key,
+    VALUE,
+  > = Omit<Init<Table.AnyTable, KEY, VALUE>, "env" | "table"> & {
+    table: TABLE_DEF;
+  };
 }
