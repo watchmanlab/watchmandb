@@ -144,7 +144,7 @@ export class Table<
     return true;
   }
   protected _update(id: ID, curr: ROW): boolean {
-    this._schema?.parse(curr);
+    this._schema.parse(curr);
 
     const prev = this._db.get(id);
 
@@ -194,10 +194,10 @@ export namespace Table {
     any,
     any
   >;
-  export type InferValue<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, infer V, any> ? V : never;
-  export type InferKey<TABLE extends AnyTable> =
-    TABLE extends Table<any, infer K, any, any> ? K : never;
+  export type InferRow<TABLE extends AnyTable> =
+    TABLE extends Table<any, any, infer ROW, any> ? ROW : never;
+  export type InferId<TABLE extends AnyTable> =
+    TABLE extends Table<any, infer ID, any, any> ? ID : never;
 
   export type Init<
     SCHEMA extends SchemaProvider.AnySchemaProvider,

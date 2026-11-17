@@ -16,6 +16,7 @@ const env = open("test.mdb", {});
 const users = new Table({
   env,
   name: "users",
+  idSelector: (row) => row.email,
   schema: zodSchema(
     z.object({ email: z.string(), name: z.string(), age: z.number() }),
   ),
@@ -56,13 +57,13 @@ const maxAgeAgg = new Aggregate({
 
 console.time("write");
 await env.transaction(() => {
-  users.insert("bbb@g", { email: "bbb@g", name: "ambic", age: 42 });
-  users.insert("aaa@g", { email: "aaa@g", name: "sofiane", age: 53 });
-  users.insert("ddd@g", { email: "ddd@g", name: "sofiane", age: 40 });
-  users.insert("eee@g", { email: "eee@g", name: "zrezem", age: 22 });
-  users.insert("vvv@g", { email: "vvv@g", name: "ambic", age: 22 });
+  users.insert({ email: "bbb@g", name: "ambic", age: 42 });
+  users.insert({ email: "aaa@g", name: "sofiane", age: 53 });
+  users.insert({ email: "ddd@g", name: "sofiane", age: 40 });
+  users.insert({ email: "eee@g", name: "zrezem", age: 22 });
+  users.insert({ email: "vvv@g", name: "ambic", age: 22 });
   for (let i = 1; i <= 100_000; i++) {
-    users.insert(`${i}@g`, { email: `${i}@g`, name: `${i}name`, age: i });
+    users.insert({ email: `${i}@g`, name: `${i}name`, age: i });
   }
 });
 console.timeEnd("write");
