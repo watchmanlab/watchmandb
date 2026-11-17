@@ -56,6 +56,15 @@ export class View<
   }
 }
 
+export function createView<
+  SOURCE extends Table.AnyTable,
+  KEY extends Key,
+  VALUE,
+>(init: Omit<View.Init<SOURCE, KEY, VALUE>, "env" | "table">) {
+  return (env: RootDatabase, table: SOURCE) =>
+    new View({ ...init, env, table } as View.Init<SOURCE, KEY, VALUE>);
+}
+
 export namespace View {
   export type Init<SOURCE extends Table.AnyTable, KEY extends Key, VALUE> = {
     name: string;

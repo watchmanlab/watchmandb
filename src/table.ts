@@ -9,6 +9,7 @@ import {
   TerminateReason,
 } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
+import { View } from "./view";
 
 export class Table<
   KEY extends Key,
@@ -42,14 +43,12 @@ export class Table<
       sharedStructuresKey: Symbol.for(this._name),
     });
   }
-
   [Symbol.iterator]() {
     return this.all()[Symbol.iterator]();
   }
   get name(): string {
     return this._name;
   }
-
   get $beforeInsert(): Source<{ key: KEY; curr: Readonly<VALUE> }> {
     return Source.from((this._$beforeInsert ??= new Stream()));
   }
@@ -76,7 +75,6 @@ export class Table<
   get $afterDelete(): Source<{ key: KEY; prev: Readonly<VALUE> }> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
-
   get(key: KEY) {
     return this._db.get(key);
   }
@@ -160,6 +158,11 @@ export class Table<
       .pipe(listen((key: KEY) => this.delete(key)))
       .pipe(terminate());
   }
+  // createView<KEY extends Key, VALUE>(
+  //   init: Omit<View.Init<this, KEY, VALUE>, "env" | "table">,
+  // ) {
+  //   return new View({ ...init, env: this._env, table: this });
+  // }
 }
 
 export namespace Table {
