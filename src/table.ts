@@ -18,7 +18,7 @@ export class Table<
   protected _name: string;
   protected _env: RootDatabase;
   protected _db: Database<Readonly<VALUE>, KEY>;
-
+  // protected _events?: Stream<{type:"";  key: KEY; curr: Readonly<VALUE> }>
   protected _$beforeInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
   protected _$afterInsert?: Stream<{ key: KEY; curr: Readonly<VALUE> }>;
   protected _$beforeUpdate?: Stream<{
