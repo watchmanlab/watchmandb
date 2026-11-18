@@ -10,12 +10,7 @@ import { Table } from "./table";
 import { Database, Key, RootDatabase } from "lmdb";
 import { isDeepEqual } from "./utils";
 
-export class Index<
-  TABLE extends Table.AnyTable,
-  KEY extends Key,
-  VALUE = KEY,
-  TX extends boolean = false,
-> {
+export class Index<TABLE extends Table.AnyTable, KEY extends Key, VALUE = KEY> {
   private _name: string;
   private _db: Database<any, [KEY, Table.InferId<TABLE>]>;
   constructor(private init: Index.Init<TABLE, KEY, VALUE>) {
@@ -38,13 +33,13 @@ export class Index<
   }
   private _makeKey(
     key: Table.InferId<TABLE>,
-    value: Readonly<Table.InferRow<TABLE>>,
+    value: Readonly<Table.InferOutput<TABLE>>,
   ): [KEY, Table.InferId<TABLE>] {
     return [this.init.keySelector(value), key];
   }
   private _beforeInsert(
     key: Table.InferId<TABLE>,
-    curr: Readonly<Table.InferRow<TABLE>>,
+    curr: Readonly<Table.InferOutput<TABLE>>,
   ) {
     const newKey = this._makeKey(key, curr);
 
@@ -63,8 +58,8 @@ export class Index<
   }
   private _beforeUpdate(
     key: Table.InferId<TABLE>,
-    curr: Readonly<Table.InferRow<TABLE>>,
-    prev: Readonly<Table.InferRow<TABLE>>,
+    curr: Readonly<Table.InferOutput<TABLE>>,
+    prev: Readonly<Table.InferOutput<TABLE>>,
   ) {
     const oldKey = this._makeKey(key, prev);
     const newKey = this._makeKey(key, curr);
@@ -90,7 +85,7 @@ export class Index<
   }
   private _beforeDelete(
     key: Table.InferId<TABLE>,
-    prev: Readonly<Table.InferRow<TABLE>>,
+    prev: Readonly<Table.InferOutput<TABLE>>,
   ) {
     this._db.remove(this._makeKey(key, prev));
   }
@@ -155,8 +150,8 @@ export namespace Index {
     name: string;
     env: RootDatabase;
     table: TABLE;
-    keySelector: (row: Readonly<Table.InferRow<TABLE>>) => KEY;
-    includes?: (row: Readonly<Table.InferRow<TABLE>>) => VALUE;
+    keySelector: (row: Readonly<Table.InferOutput<TABLE>>) => KEY;
+    includes?: (row: Readonly<Table.InferOutput<TABLE>>) => VALUE;
     unique?: boolean;
   };
 }

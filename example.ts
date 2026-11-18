@@ -1,5 +1,5 @@
 import { Table } from "./src/table";
-import {} from "bun";
+import { randomUUIDv7 } from "bun";
 import { open } from "lmdb";
 import { Index } from "./src/index";
 import { zodSchema } from "./src/zod-schema";
@@ -15,15 +15,15 @@ const env = open("test.mdb", {});
 const users = new Table({
   env,
   name: "users",
-  idSelector: (row) => row.email,
   schema: zodSchema(
     z.object({
-      id: z.uuidv7().optional(),
+      id: z.uuidv7().default(() => randomUUIDv7("hex")),
       email: z.string(),
       name: z.string(),
       age: z.number(),
     }),
   ),
+  idSelector: (row) => row.id,
 });
 
 const admins = new Table({

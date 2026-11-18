@@ -3,7 +3,8 @@ import { z } from "zod";
 
 export class ZodSchema<SCHEMA extends z.ZodType> implements SchemaProvider<
   SCHEMA,
-  z.output<SCHEMA>
+  Readonly<z.input<SCHEMA>>,
+  Readonly<z.output<SCHEMA>>
 > {
   schema: SCHEMA;
   constructor(schema: SCHEMA) {
@@ -16,6 +17,10 @@ export class ZodSchema<SCHEMA extends z.ZodType> implements SchemaProvider<
 
 export function zodSchema<SCHEMA extends z.ZodType>(
   schema: SCHEMA,
-): SchemaProvider<SCHEMA, Readonly<z.output<SCHEMA>>> {
+): SchemaProvider<
+  SCHEMA,
+  Readonly<z.input<SCHEMA>>,
+  Readonly<z.output<SCHEMA>>
+> {
   return new ZodSchema(schema);
 }

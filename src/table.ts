@@ -5,29 +5,31 @@ import { SchemaProvider } from "./schema-provider";
 export class Table<
   SCHEMA extends SchemaProvider.AnySchemaProvider,
   ID extends Key,
-  ROW = SchemaProvider.InferOutput<SCHEMA>,
-  TX extends boolean = false,
-> implements Iterable<{ id: ID; row: Readonly<ROW> }> {
+  INPUT extends SchemaProvider.InferInput<SCHEMA> =
+    SchemaProvider.InferInput<SCHEMA>,
+  OUTPUT extends SchemaProvider.InferOutput<SCHEMA> =
+    SchemaProvider.InferOutput<SCHEMA>,
+> implements Iterable<{ id: ID; row: OUTPUT }> {
   protected _name: string;
   protected _env: RootDatabase;
   protected _schema: SCHEMA;
-  protected _idSelector: (row: ROW) => ID;
-  protected _db: Database<Readonly<ROW>, ID>;
-  protected _$beforeInsert?: Stream<{ id: ID; curr: Readonly<ROW> }>;
-  protected _$afterInsert?: Stream<{ id: ID; curr: Readonly<ROW> }>;
+  protected _idSelector: (row: OUTPUT) => ID;
+  protected _db: Database<OUTPUT, ID>;
+  protected _$beforeInsert?: Stream<{ id: ID; curr: OUTPUT }>;
+  protected _$afterInsert?: Stream<{ id: ID; curr: OUTPUT }>;
   protected _$beforeUpdate?: Stream<{
     id: ID;
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
+    curr: OUTPUT;
+    prev: OUTPUT;
   }>;
   protected _$afterUpdate?: Stream<{
     id: ID;
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
+    curr: OUTPUT;
+    prev: OUTPUT;
   }>;
-  protected _$beforeDelete?: Stream<{ id: ID; prev: Readonly<ROW> }>;
-  protected _$afterDelete?: Stream<{ id: ID; prev: Readonly<ROW> }>;
-  constructor(init: Table.Init<SCHEMA, ID, ROW>) {
+  protected _$beforeDelete?: Stream<{ id: ID; prev: OUTPUT }>;
+  protected _$afterDelete?: Stream<{ id: ID; prev: OUTPUT }>;
+  constructor(init: Table.Init<SCHEMA, ID, OUTPUT>) {
     const { name, env, schema, idSelector } = init;
     this._name = name;
     this._env = env;
@@ -47,75 +49,79 @@ export class Table<
   get schema(): SCHEMA | undefined {
     return this._schema;
   }
-  get $beforeInsert(): Source<{ id: ID; curr: Readonly<ROW> }> {
+  get $beforeInsert(): Source<{ id: ID; curr: OUTPUT }> {
     return Source.from((this._$beforeInsert ??= new Stream()));
   }
-  get $afterInsert(): Source<{ id: ID; curr: Readonly<ROW> }> {
+  get $afterInsert(): Source<{ id: ID; curr: OUTPUT }> {
     return Source.from((this._$afterInsert ??= new Stream()));
   }
   get $beforeUpdate(): Source<{
     id: ID;
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
+    curr: OUTPUT;
+    prev: OUTPUT;
   }> {
     return Source.from((this._$beforeUpdate ??= new Stream()));
   }
   get $afterUpdate(): Source<{
     id: ID;
-    curr: Readonly<ROW>;
-    prev: Readonly<ROW>;
+    curr: OUTPUT;
+    prev: OUTPUT;
   }> {
     return Source.from((this._$afterUpdate ??= new Stream()));
   }
-  get $beforeDelete(): Source<{ id: ID; prev: Readonly<ROW> }> {
+  get $beforeDelete(): Source<{ id: ID; prev: OUTPUT }> {
     return Source.from((this._$beforeDelete ??= new Stream()));
   }
-  get $afterDelete(): Source<{ id: ID; prev: Readonly<ROW> }> {
+  get $afterDelete(): Source<{ id: ID; prev: OUTPUT }> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
   has(id: ID): boolean {
     return this._db.doesExist(id);
   }
-  get(id: ID): Readonly<ROW> | undefined {
+  get(id: ID): OUTPUT | undefined {
     return this._db.get(id);
   }
-  all(): Source<{ id: ID; row: Readonly<ROW> }> {
+  all(): Source<{ id: ID; row: OUTPUT }> {
     return fromIterable(this._db.getRange()).pipe(
       map((e) => ({ id: e.key, row: e.value })),
     );
   }
-  insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
-    const id = this._idSelector(row);
-
+  insert(row: INPUT): void {
+    const parsed = this._schema.parse(row);
+    const id = this._idSelector(parsed);
     if (this._isInsideTransaction()) {
-      return this._insert(id, row) as never;
+      this._insert(id, parsed);
     } else {
-      return this._db.transaction(() => this._insert(id, row)) as never;
+      this._db.transaction(() => this._insert(id, parsed));
     }
   }
-  update(row: ROW): TX extends true ? boolean : Promise<boolean> {
-    const id = this._idSelector(row);
+  update(row: OUTPUT): void {
+    const parsed = this._schema.parse(row);
+
+    const id = this._idSelector(parsed);
 
     if (this._isInsideTransaction()) {
-      return this._update(id, row) as never;
+      this._update(id, parsed);
     } else {
-      return this._db.transaction(() => this._update(id, row)) as never;
+      this._db.transaction(() => this._update(id, parsed));
     }
   }
-  upsert(row: ROW): TX extends true ? boolean : Promise<boolean> {
-    const id = this._idSelector(row);
+  upsert(row: INPUT | OUTPUT): void {
+    const parsed = this._schema.parse(row);
+
+    const id = this._idSelector(parsed);
 
     if (this._db.doesExist(id)) {
-      return this.update(row) as never;
+      this.update(parsed);
     } else {
-      return this.insert(row) as never;
+      this.insert(parsed);
     }
   }
-  delete(id: ID): TX extends true ? boolean : Promise<boolean> {
+  delete(id: ID): void {
     if (this._isInsideTransaction()) {
-      return this._delete(id) as never;
+      this._delete(id);
     } else {
-      return this._db.transaction(() => this._delete(id)) as never;
+      this._db.transaction(() => this._delete(id));
     }
   }
   protected _isInsideTransaction(): boolean {
@@ -125,10 +131,8 @@ export class Table<
       return false;
     }
   }
-  protected _insert(id: ID, curr: ROW): boolean {
-    this._schema.parse(curr);
-
-    if (this._db.doesExist(id)) return false;
+  protected _insert(id: ID, curr: OUTPUT): void {
+    if (this._db.doesExist(id)) return;
 
     this._$beforeInsert?.push({ id, curr });
 
@@ -137,14 +141,12 @@ export class Table<
       this._$afterInsert?.push({ id, curr });
     });
 
-    return true;
+    return;
   }
-  protected _update(id: ID, curr: ROW): boolean {
-    this._schema.parse(curr);
-
+  protected _update(id: ID, curr: OUTPUT): void {
     const prev = this._db.get(id);
 
-    if (!prev) return false;
+    if (!prev) return;
 
     this._$beforeUpdate?.push({ id, curr, prev });
 
@@ -152,11 +154,11 @@ export class Table<
       if (r) this._$afterUpdate?.push({ id, curr, prev });
     });
 
-    return true;
+    return;
   }
-  protected _delete(id: ID): boolean {
+  protected _delete(id: ID): void {
     const prev = this._db.get(id);
-    if (!prev) return false;
+    if (!prev) return;
 
     this._$beforeDelete?.push({ id, prev });
 
@@ -164,7 +166,7 @@ export class Table<
       if (!r) return;
       this._$afterDelete?.push({ id, prev });
     });
-    return true;
+    return;
   }
   drop(): Promise<void> {
     return this._db.drop();
@@ -174,8 +176,11 @@ export class Table<
 export function defineTable<
   SCHEMA extends SchemaProvider.AnySchemaProvider,
   ID extends Key,
-  ROW = SchemaProvider.InferOutput<SCHEMA>,
->(def: Table.Definition<SCHEMA, ID, ROW>): Table.Definition<SCHEMA, ID, ROW> {
+  OUTPUT extends SchemaProvider.InferOutput<SCHEMA> =
+    SchemaProvider.InferOutput<SCHEMA>,
+>(
+  def: Table.Definition<SCHEMA, ID, OUTPUT>,
+): Table.Definition<SCHEMA, ID, OUTPUT> {
   return def;
 }
 
@@ -188,25 +193,27 @@ export namespace Table {
     any,
     any
   >;
-  export type InferRow<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, infer ROW, any> ? ROW : never;
+  export type InferInput<TABLE extends AnyTable> =
+    TABLE extends Table<any, any, infer INPUT, any> ? INPUT : never;
+  export type InferOutput<TABLE extends AnyTable> =
+    TABLE extends Table<any, any, any, infer OUTPUT> ? OUTPUT : never;
   export type InferId<TABLE extends AnyTable> =
     TABLE extends Table<any, infer ID, any, any> ? ID : never;
 
   export type Init<
     SCHEMA extends SchemaProvider.AnySchemaProvider,
     ID extends Key,
-    ROW = SchemaProvider.InferOutput<SCHEMA>,
+    OUTPUT extends SchemaProvider.InferOutput<SCHEMA>,
   > = {
     name: string;
     env: RootDatabase;
-    idSelector: (row: ROW) => ID;
+    idSelector: (row: OUTPUT) => ID;
     schema: SCHEMA;
   };
 
   export type Definition<
     SCHEMA extends SchemaProvider.AnySchemaProvider,
     ID extends Key,
-    ROW = SchemaProvider.InferOutput<SCHEMA>,
-  > = Omit<Init<SCHEMA, ID, ROW>, "env" | "name">;
+    OUTPUT extends SchemaProvider.InferOutput<SCHEMA>,
+  > = Omit<Init<SCHEMA, ID, OUTPUT>, "env" | "name">;
 }

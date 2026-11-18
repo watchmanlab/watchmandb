@@ -4,7 +4,11 @@ import type { SchemaProvider } from "./schema-provider.js";
 
 export class TypeBoxSchema<
   SCHEMA extends Type.TSchema,
-> implements SchemaProvider<SCHEMA, Type.Static<SCHEMA>> {
+> implements SchemaProvider<
+  SCHEMA,
+  Readonly<Type.StaticEncode<SCHEMA>>,
+  Readonly<Type.StaticDecode<SCHEMA>>
+> {
   schema: SCHEMA;
   private validator: Schema.Validator;
   constructor(schema: SCHEMA) {
@@ -12,13 +16,17 @@ export class TypeBoxSchema<
 
     this.validator = Schema.Compile(this.schema);
   }
-  parse(data: unknown): Readonly<Type.Static<SCHEMA>> {
-    return this.validator.Parse(data) as never;
+  parse(data: unknown): Readonly<Type.StaticDecode<SCHEMA>> {
+    return Object.freeze(this.validator.Parse(data)) as never;
   }
 }
 
 export function typeBox<SCHEMA extends Type.TSchema>(
   schema: SCHEMA,
-): SchemaProvider<SCHEMA, Readonly<Type.Static<SCHEMA>>> {
+): SchemaProvider<
+  SCHEMA,
+  Readonly<Type.StaticEncode<SCHEMA>>,
+  Readonly<Type.StaticDecode<SCHEMA>>
+> {
   return new TypeBoxSchema(schema);
 }
