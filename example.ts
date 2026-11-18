@@ -6,6 +6,7 @@ import { Aggregate } from "./src/aggregate";
 import { View } from "./src/view";
 import { zodSchema } from "./src/zod-schema";
 import z from "zod";
+import { filter, listen } from "@watchmanlab/stream";
 
 try {
   await Bun.file("test.mdb").unlink();
@@ -22,38 +23,23 @@ const users = new Table({
   ),
 });
 
-const olders = new View({
+const admins = new Table({
   env,
-  table: users,
-  name: "olders",
-  // map(row) {
-  //   return row;
-  // },
-  filter: (v) => v.age <= 3,
+  name: "admins",
+  schema: zodSchema(z.object({ name: z.string() })),
+  idSelector: (row) => row.name,
 });
 
-const byAge = new Index({
-  env,
-  table: users,
-  name: "byAge",
-  keySelector: (curr) => curr.age,
-  includes: (curr) => curr,
-});
-
-const maxAgeAgg = new Aggregate({
-  env,
-  table: users,
-  name: "count",
-  seed: { maxAge: 0 },
-  groupBy(row) {
-    return row.name;
-  },
-  reducer(acc, curr, prev) {
-    return {
-      maxAge: Math.max(acc.maxAge, curr?.age ?? 0),
-    };
-  },
-});
+users.$beforeInsert.pipe(filter((e) => e.curr.age <= 3)).pipe(
+  listen((r) => {
+    admins.insert({ name: r.curr.name });
+  }),
+);
+users.$beforeDelete.pipe(
+  listen((r) => {
+    admins.delete(r.prev.name);
+  }),
+);
 
 console.time("write");
 await env.transaction(() => {
@@ -68,12 +54,12 @@ await env.transaction(() => {
 });
 console.timeEnd("write");
 
-for (const v of olders.all()) {
+for (const v of admins.all()) {
 }
 
 console.time("read");
 
-for (const v of olders.all()) {
+for (const v of admins.all()) {
   console.log(v);
 }
 

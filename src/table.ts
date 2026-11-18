@@ -1,13 +1,4 @@
-import {
-  fromIterable,
-  listen,
-  map,
-  Source,
-  Stream,
-  Terminate,
-  terminate,
-  TerminateReason,
-} from "@watchmanlab/stream";
+import { fromIterable, map, Source, Stream } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
 import { SchemaProvider } from "./schema-provider";
 
@@ -16,7 +7,7 @@ export class Table<
   ID extends Key,
   ROW = SchemaProvider.InferOutput<SCHEMA>,
   TX extends boolean = false,
-> implements Iterable<ROW> {
+> implements Iterable<{ id: ID; row: Readonly<ROW> }> {
   protected _name: string;
   protected _env: RootDatabase;
   protected _schema: SCHEMA;
@@ -88,8 +79,10 @@ export class Table<
   get(id: ID): Readonly<ROW> | undefined {
     return this._db.get(id);
   }
-  all(): Source<ROW> {
-    return fromIterable(this._db.getRange()).pipe(map((e) => e.value));
+  all(): Source<{ id: ID; row: Readonly<ROW> }> {
+    return fromIterable(this._db.getRange()).pipe(
+      map((e) => ({ id: e.key, row: e.value })),
+    );
   }
   insert(row: ROW): TX extends true ? boolean : Promise<boolean> {
     const id = this._idSelector(row);
