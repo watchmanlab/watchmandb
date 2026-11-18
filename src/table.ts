@@ -82,7 +82,10 @@ export class Table<
   get $afterDelete(): Source<{ id: ID; prev: Readonly<ROW> }> {
     return Source.from((this._$afterDelete ??= new Stream()));
   }
-  get(id: ID) {
+  has(id: ID): boolean {
+    return this._db.doesExist(id);
+  }
+  get(id: ID): Readonly<ROW> | undefined {
     return this._db.get(id);
   }
   all(): Source<ROW> {
@@ -170,10 +173,8 @@ export class Table<
     });
     return true;
   }
-  clear(): Terminate<Source<TerminateReason>> {
-    return fromIterable(this._db.getKeys())
-      .pipe(listen((id) => this.delete(id)))
-      .pipe(terminate());
+  drop(): Promise<void> {
+    return this._db.drop();
   }
 }
 
