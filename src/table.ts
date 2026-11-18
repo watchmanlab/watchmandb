@@ -1,6 +1,7 @@
 import { fromIterable, map, Source, Stream } from "@watchmanlab/stream";
 import type { Database, Key, RootDatabase } from "lmdb";
 import { SchemaProvider } from "./schema-provider";
+import { fail, Result } from "./utils";
 
 export class Table<
   SCHEMA extends SchemaProvider.AnySchemaProvider,
@@ -9,6 +10,8 @@ export class Table<
     SchemaProvider.InferInput<SCHEMA>,
   OUTPUT extends SchemaProvider.InferOutput<SCHEMA> =
     SchemaProvider.InferOutput<SCHEMA>,
+  ERROR extends SchemaProvider.InferError<SCHEMA> =
+    SchemaProvider.InferError<SCHEMA>,
 > implements Iterable<{ id: ID; row: OUTPUT }> {
   protected _name: string;
   protected _env: RootDatabase;
@@ -86,14 +89,34 @@ export class Table<
       map((e) => ({ id: e.key, row: e.value })),
     );
   }
-  insert(row: INPUT): void {
-    const parsed = this._schema.parse(row);
-    const id = this._idSelector(parsed);
+  insert(row: INPUT): Result<ID, ERROR | "exist"> {
+    const result = this._schema.parse(row);
+    if (!result.ok) return fail(result.error);
+
+    const id = this._idSelector(result.data);
+
+    if (this._db.doesExist(id)) return fail("exist");
+
     if (this._isInsideTransaction()) {
-      this._insert(id, parsed);
+      this._insert(id, result.data);
     } else {
-      this._db.transaction(() => this._insert(id, parsed));
+      this._db.transaction(() => this._insert(id, result.data));
     }
+  }
+  protected _isInsideTransaction(): boolean {
+    try {
+      return this._db.getWriteTxnId() > 0;
+    } catch (error) {
+      return false;
+    }
+  }
+  protected _insert(id: ID, curr: OUTPUT): Promise<void> {
+    this._$beforeInsert?.push({ id, curr });
+
+    return this._db.put(id, curr).then((r) => {
+      if (!r) return;
+      this._$afterInsert?.push({ id, curr });
+    });
   }
   update(row: OUTPUT): void {
     const parsed = this._schema.parse(row);
@@ -124,25 +147,7 @@ export class Table<
       this._db.transaction(() => this._delete(id));
     }
   }
-  protected _isInsideTransaction(): boolean {
-    try {
-      return this._db.getWriteTxnId() > 0;
-    } catch (error) {
-      return false;
-    }
-  }
-  protected _insert(id: ID, curr: OUTPUT): void {
-    if (this._db.doesExist(id)) return;
 
-    this._$beforeInsert?.push({ id, curr });
-
-    this._db.put(id, curr).then((r) => {
-      if (!r) return;
-      this._$afterInsert?.push({ id, curr });
-    });
-
-    return;
-  }
   protected _update(id: ID, curr: OUTPUT): void {
     const prev = this._db.get(id);
 
@@ -187,19 +192,26 @@ export function defineTable<
 export function createTable() {}
 
 export namespace Table {
-  export type AnyTable = Table<SchemaProvider.AnySchemaProvider, any, any, any>;
+  export type AnyTable = Table<
+    SchemaProvider.AnySchemaProvider,
+    any,
+    any,
+    any,
+    any
+  >;
   export type AnyDefinition = Definition<
     SchemaProvider.AnySchemaProvider,
     any,
     any
   >;
-  export type InferInput<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, infer INPUT, any> ? INPUT : never;
-  export type InferOutput<TABLE extends AnyTable> =
-    TABLE extends Table<any, any, any, infer OUTPUT> ? OUTPUT : never;
   export type InferId<TABLE extends AnyTable> =
-    TABLE extends Table<any, infer ID, any, any> ? ID : never;
-
+    TABLE extends Table<any, infer ID, any, any, any> ? ID : never;
+  export type InferInput<TABLE extends AnyTable> =
+    TABLE extends Table<any, any, infer INPUT, any, any> ? INPUT : never;
+  export type InferOutput<TABLE extends AnyTable> =
+    TABLE extends Table<any, any, any, infer OUTPUT, any> ? OUTPUT : never;
+  export type InferError<TABLE extends AnyTable> =
+    TABLE extends Table<any, any, any, any, infer ERROR> ? ERROR : never;
   export type Init<
     SCHEMA extends SchemaProvider.AnySchemaProvider,
     ID extends Key,

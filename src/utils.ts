@@ -44,3 +44,13 @@ export function isDeepEqual(left: unknown, right: unknown): boolean {
       ? isDeepEqualObject(left, right)
       : isEqual(left, right);
 }
+
+export type Success<DATA> = { ok: true; data: DATA };
+export type Fail<ERROR> = { ok: false; error: ERROR };
+export type Result<DATA, ERROR = unknown> = Success<DATA> | Fail<ERROR>;
+export function success<DATA>(data: DATA): Success<DATA> {
+  return { ok: true, data };
+}
+export function fail<ERROR>(error: ERROR): Fail<ERROR> {
+  return { ok: false, error };
+}

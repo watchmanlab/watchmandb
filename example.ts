@@ -38,6 +38,7 @@ users.$beforeInsert.pipe(filter((e) => e.curr.age <= 3)).pipe(
     admins.insert({ name: r.curr.name });
   }),
 );
+
 users.$beforeUpdate.pipe(
   listen(({ id, curr, prev }) => {
     admins.delete(prev.name);
