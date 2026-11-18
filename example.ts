@@ -1,9 +1,7 @@
 import { Table } from "./src/table";
 import {} from "bun";
 import { open } from "lmdb";
-import { Index } from "./src/table-index";
-import { Aggregate } from "./src/aggregate";
-import { View } from "./src/view";
+import { Index } from "./src/index";
 import { zodSchema } from "./src/zod-schema";
 import z from "zod";
 import { filter, listen } from "@watchmanlab/stream";
@@ -19,7 +17,12 @@ const users = new Table({
   name: "users",
   idSelector: (row) => row.email,
   schema: zodSchema(
-    z.object({ email: z.string(), name: z.string(), age: z.number() }),
+    z.object({
+      id: z.uuidv7().optional(),
+      email: z.string(),
+      name: z.string(),
+      age: z.number(),
+    }),
   ),
 });
 
@@ -33,6 +36,12 @@ const admins = new Table({
 users.$beforeInsert.pipe(filter((e) => e.curr.age <= 3)).pipe(
   listen((r) => {
     admins.insert({ name: r.curr.name });
+  }),
+);
+users.$beforeUpdate.pipe(
+  listen(({ id, curr, prev }) => {
+    admins.delete(prev.name);
+    admins.insert({ name: curr.name });
   }),
 );
 users.$beforeDelete.pipe(
