@@ -18,14 +18,14 @@ export class Index<TABLE extends Table.AnyTable, KEY extends Key, VALUE = KEY> {
     this._name = `index:${table.name}:${name}`;
     this._db = env.openDB({ name: this._name });
 
-    table.$beforeInsert.pipe(
-      listen(({ id, curr }) => this._beforeInsert(id, curr)),
+    table.$beforeUpsert.pipe(
+      listen(({ id, row }) => this._beforeInsert(id, row)),
     );
     table.$beforeUpdate.pipe(
-      listen(({ id, curr, prev }) => this._beforeUpdate(id, curr, prev)),
+      listen(({ id, row, row }) => this._beforeUpdate(id, row, row)),
     );
     table.$beforeDelete.pipe(
-      listen(({ id, prev }) => this._beforeDelete(id, prev)),
+      listen(({ id, row }) => this._beforeDelete(id, row)),
     );
   }
   get name(): string {
@@ -39,9 +39,9 @@ export class Index<TABLE extends Table.AnyTable, KEY extends Key, VALUE = KEY> {
   }
   private _beforeInsert(
     key: Table.InferId<TABLE>,
-    curr: Readonly<Table.InferOutput<TABLE>>,
+    row: Readonly<Table.InferOutput<TABLE>>,
   ) {
-    const newKey = this._makeKey(key, curr);
+    const newKey = this._makeKey(key, row);
 
     if (this.init.unique) {
       const [colVal] = newKey;
@@ -54,15 +54,15 @@ export class Index<TABLE extends Table.AnyTable, KEY extends Key, VALUE = KEY> {
         .next();
     }
 
-    this._db.put(newKey, this.init.includes?.(curr) ?? (null as VALUE));
+    this._db.put(newKey, this.init.includes?.(row) ?? (null as VALUE));
   }
   private _beforeUpdate(
     key: Table.InferId<TABLE>,
-    curr: Readonly<Table.InferOutput<TABLE>>,
-    prev: Readonly<Table.InferOutput<TABLE>>,
+    row: Readonly<Table.InferOutput<TABLE>>,
+    row: Readonly<Table.InferOutput<TABLE>>,
   ) {
-    const oldKey = this._makeKey(key, prev);
-    const newKey = this._makeKey(key, curr);
+    const oldKey = this._makeKey(key, row);
+    const newKey = this._makeKey(key, row);
 
     if (isDeepEqual(oldKey, newKey)) return;
 
@@ -81,13 +81,13 @@ export class Index<TABLE extends Table.AnyTable, KEY extends Key, VALUE = KEY> {
     }
 
     this._db.remove(oldKey);
-    this._db.put(newKey, this.init.includes?.(curr) ?? (null as VALUE));
+    this._db.put(newKey, this.init.includes?.(row) ?? (null as VALUE));
   }
   private _beforeDelete(
     key: Table.InferId<TABLE>,
-    prev: Readonly<Table.InferOutput<TABLE>>,
+    row: Readonly<Table.InferOutput<TABLE>>,
   ) {
-    this._db.remove(this._makeKey(key, prev));
+    this._db.remove(this._makeKey(key, row));
   }
 
   eq(key: KEY): Source<VALUE> {

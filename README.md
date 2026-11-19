@@ -42,7 +42,7 @@ WatchmanDB operations are wired directly into a pull-on-push synchronous streami
 - **`$after*` Streams (Durable Confirmation):** Microtask confirmation channels that fire exclusively after a transaction has successfully committed and synchronized data safely to the physical disk platter.
 - The `Source` stream returned by `Table.find()` is **strictly lazy and demand-driven**. Calling `find()` allocates no cursors, schedules no microtasks, and performs **zero database or memory lookups** up front. The query path remains entirely dormant until a consumer explicitly consume the source. If a query stream is never consumed, its operational footprint on your CPU and memory cache is absolute zero.
 
-- **`live queries`:** Because everything is natively composed around reactive streaming primitives, real-time live queries require no dedicated server-side engines or custom tracking layers. Users can create long-lived, real-time streaming queries entirely in user land by blending/merging initial history lookups with the `$afterInsert` / `$afterUpdate` channels.
+- **`live queries`:** Because everything is natively composed around reactive streaming primitives, real-time live queries require no dedicated server-side engines or custom tracking layers. Users can create long-lived, real-time streaming queries entirely in user land by blending/merging initial history lookups with the `$afterUpsert` / `$afterUpdate` channels.
 
 - **Zero-Buffer Network Streaming:** Because even the synchronous pull mechanism is fully lazy on a per-value basis, database queries can be streamed directly into a web-standard `ReadableStream` for HTTP responses. Data flows seamlessly from LMDB's memory-mapped files (`mmap`) straight to the client application's network socket without allocating massive intermediate arrays or creating extra memory locations in the V8 heap.
 
@@ -95,8 +95,8 @@ const db = create({
 ```typescript
 import { map, toConsole } from "@watchmanlab/stream";
 
-// 1. Hook into the shallow $beforeInsert pipeline for transaction-safe constraints
-db.tables.request.$beforeInsert
+// 1. Hook into the shallow $beforeUpsert pipeline for transaction-safe constraints
+db.tables.request.$beforeUpsert
   .pipe(
     map((row) => {
       const userExists = db.tables.user.get(row.userId);
@@ -112,7 +112,7 @@ db.tables.request.$beforeInsert
   .pipe(toConsole());
 
 // 2. Track real-time disk durability confirmations asynchronously
-db.tables.request.$afterInsert.pipe(toConsole());
+db.tables.request.$afterUpsert.pipe(toConsole());
 
 // 3. High-throughput synchronous transaction mutations
 await db.transaction((tx) => {
@@ -164,7 +164,7 @@ const targetUserId = "usr_sofiane";
 const history = db.tables.request.find({ userId: targetUserId });
 
 // 2. Listen to the verified disk-commit stream for future updates
-const updates = db.tables.request.afterInsert.pipe(
+const updates = db.tables.request.afterUpsert.pipe(
   filter((row) => row.userId === targetUserId),
 );
 
